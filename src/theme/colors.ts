@@ -12,4 +12,10 @@ export const colors = {
   rolePlayer: '#B7E4CF',
   roleAgent: '#F0D0B4',
   descriptionBorder: '#6F6F6F',
+  homeHeader: '#07362C',
+  homeHeaderAlt: '#0C4638',
+  homeAccent: '#8CFF6B',
+  homeMuted: '#9BB8AE',
+  homeBadge: '#E53935',
+  homeStar: '#F5C518',
 };
