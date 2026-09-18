@@ -96,7 +96,10 @@ export function LoginScreen() {
               />
             </View>
 
-            <Pressable style={styles.button}>
+            <Pressable
+              style={styles.button}
+              onPress={() => navigation.navigate('CreateProfile')}
+            >
               <Text style={styles.buttonText}>Ingresa</Text>
             </Pressable>
 

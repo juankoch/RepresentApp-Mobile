@@ -8,4 +8,8 @@ export const colors = {
   inputText: '#5A5A5A',
   button: '#111111',
   buttonText: '#FFFFFF',
+  roleIdle: '#E8E8E8',
+  rolePlayer: '#B7E4CF',
+  roleAgent: '#F0D0B4',
+  descriptionBorder: '#6F6F6F',
 };
