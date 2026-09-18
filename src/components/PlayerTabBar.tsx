@@ -7,10 +7,10 @@ import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 
 type PlayerTabBarProps = {
-  homeActive?: boolean;
+  activeTab?: 'home' | 'messages';
 };
 
-export function PlayerTabBar({ homeActive = true }: PlayerTabBarProps) {
+export function PlayerTabBar({ activeTab = 'home' }: PlayerTabBarProps) {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
 
@@ -24,21 +24,37 @@ export function PlayerTabBar({ homeActive = true }: PlayerTabBarProps) {
           name="home"
           solid
           size={18}
-          color={homeActive ? colors.homeAccent : colors.homeMuted}
+          color={activeTab === 'home' ? colors.homeAccent : colors.homeMuted}
         />
-        <Text style={homeActive ? styles.tabLabelActive : styles.tabLabel}>
+        <Text
+          style={activeTab === 'home' ? styles.tabLabelActive : styles.tabLabel}
+        >
           Inicio
         </Text>
       </Pressable>
-      <View style={styles.tabItem}>
+      <Pressable
+        style={styles.tabItem}
+        onPress={() => navigation.navigate('Messages', { initialTab: 'all' })}
+      >
         <View>
-          <FontAwesome5 name="comment" size={18} color={colors.homeMuted} />
+          <FontAwesome5
+            name="comment"
+            solid={activeTab === 'messages'}
+            size={18}
+            color={activeTab === 'messages' ? colors.homeAccent : colors.homeMuted}
+          />
           <View style={styles.tabBadge}>
             <Text style={styles.badgeText}>1</Text>
           </View>
         </View>
-        <Text style={styles.tabLabel}>Mensajes</Text>
-      </View>
+        <Text
+          style={
+            activeTab === 'messages' ? styles.tabLabelActive : styles.tabLabel
+          }
+        >
+          Mensajes
+        </Text>
+      </Pressable>
       <View style={styles.tabItem}>
         <FontAwesome5 name="search" size={18} color={colors.homeMuted} />
         <Text style={styles.tabLabel}>Buscar</Text>

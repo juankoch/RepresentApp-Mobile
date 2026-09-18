@@ -205,7 +205,21 @@ export function HomeScreen() {
                   <Pressable
                     key={item.title}
                     style={styles.quickItem}
-                    onPress={() => navigation.navigate('Trials')}
+                    onPress={() => navigation.navigate('Trials', { initialTab: 'all' })}
+                  >
+                    {inner}
+                  </Pressable>
+                );
+              }
+
+              if (item.title === 'Solicitudes de mensajes') {
+                return (
+                  <Pressable
+                    key={item.title}
+                    style={styles.quickItem}
+                    onPress={() =>
+                      navigation.navigate('Messages', { initialTab: 'requests' })
+                    }
                   >
                     {inner}
                   </Pressable>
@@ -292,24 +306,41 @@ export function HomeScreen() {
           <View style={styles.banner}>
             <Image source={mockImages.banner} style={styles.bannerImage} />
             <View style={styles.bannerOverlay} />
+            <View style={styles.bannerDecor} pointerEvents="none">
+              <FontAwesome5
+                name="crown"
+                solid
+                size={58}
+                color={colors.homeAccent}
+              />
+            </View>
             <View style={styles.bannerContent}>
               <View style={styles.bannerCopy}>
+                <View style={styles.bannerKickerRow}>
+                  <FontAwesome5
+                    name="crown"
+                    solid
+                    size={11}
+                    color={colors.homeAccent}
+                  />
+                  <Text style={styles.bannerKicker}>RepresentApp Premium</Text>
+                </View>
                 <Text style={styles.bannerTitle}>
-                  Las oportunidades también se entrenan
+                  ¿Querés destacar tu perfil?
                 </Text>
                 <Text style={styles.bannerSubtitle}>
-                  Conectá. Crecé. Llegá más lejos.
+                  Accedé a beneficios exclusivos y aumentá tus oportunidades.
                 </Text>
               </View>
               <View style={styles.bannerButton}>
-                <Text style={styles.bannerButtonText}>Explorar pruebas  ›</Text>
+                <Text style={styles.bannerButtonText}>Conocé Premium  ›</Text>
               </View>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      <PlayerTabBar />
+      <PlayerTabBar activeTab="home" />
     </View>
   );
 }
@@ -608,6 +639,12 @@ const styles = StyleSheet.create({
     left: 0,
     backgroundColor: 'rgba(7, 54, 44, 0.72)',
   },
+  bannerDecor: {
+    position: 'absolute',
+    right: 14,
+    top: 10,
+    opacity: 0.18,
+  },
   bannerContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -617,6 +654,17 @@ const styles = StyleSheet.create({
   },
   bannerCopy: {
     flex: 1,
+  },
+  bannerKickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  bannerKicker: {
+    color: colors.homeAccent,
+    fontSize: 12,
+    fontWeight: '700',
   },
   bannerTitle: {
     color: '#FFFFFF',

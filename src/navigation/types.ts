@@ -3,6 +3,8 @@ export type AuthStackParamList = {
   Register: undefined;
   CreateProfile: undefined;
   Home: undefined;
-  Trials: undefined;
+  Trials: { initialTab?: 'all' } | undefined;
   TrialDetail: { trialId: string };
+  Messages: { initialTab?: 'all' | 'requests' };
+  Chat: { conversationId: string };
 };

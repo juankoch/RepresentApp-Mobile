@@ -1,8 +1,8 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Image,
   Platform,
@@ -20,19 +20,45 @@ import { usePlayerTrials } from '../context/PlayerTrialsContext';
 import { playerTrials } from '../data/playerTrials';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
+import { matchesSearch } from '../utils/search';
 
 type TrialsTab = 'all' | 'pending';
 
 export function TrialsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const route = useRoute<RouteProp<AuthStackParamList, 'Trials'>>();
   const { appliedTrialIds, hasApplied } = usePlayerTrials();
-  const [tab, setTab] = useState<TrialsTab>('all');
+  const [tab, setTab] = useState<TrialsTab>(route.params?.initialTab ?? 'all');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const visibleTrials =
-    tab === 'all'
-      ? playerTrials
-      : playerTrials.filter((trial) => appliedTrialIds.includes(trial.id));
+  useFocusEffect(
+    useCallback(() => {
+      const nextTab = route.params?.initialTab;
+      if (!nextTab) {
+        return;
+      }
+
+      setTab(nextTab);
+      navigation.setParams({ initialTab: undefined });
+    }, [navigation, route.params?.initialTab]),
+  );
+
+  const visibleTrials = playerTrials.filter((trial) => {
+    const matchesTab =
+      tab === 'all' || appliedTrialIds.includes(trial.id);
+    const matchesQuery =
+      matchesSearch(trial.name, searchQuery) ||
+      matchesSearch(trial.club, searchQuery);
+
+    return matchesTab && matchesQuery;
+  });
+
+  const emptyMessage = searchQuery.trim()
+    ? 'No encontramos pruebas para esa búsqueda.'
+    : tab === 'pending'
+      ? 'Todavía no te postulaste a ninguna prueba.'
+      : 'No hay pruebas disponibles.';
 
   return (
     <View style={styles.root}>
@@ -86,6 +112,8 @@ export function TrialsScreen() {
             style={styles.searchInput}
             placeholder="Buscar pruebas..."
             placeholderTextColor="#8A8A8A"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
           <FontAwesome5 name="sliders-h" size={14} color="#8A8A8A" />
         </View>
@@ -95,9 +123,7 @@ export function TrialsScreen() {
           contentContainerStyle={styles.list}
         >
           {visibleTrials.length === 0 ? (
-            <Text style={styles.emptyText}>
-              Todavía no te postulaste a ninguna prueba.
-            </Text>
+            <Text style={styles.emptyText}>{emptyMessage}</Text>
           ) : (
             visibleTrials.map((trial) => {
               const applied = hasApplied(trial.id);
