@@ -1,5 +1,11 @@
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { FontAwesome5 } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import {
   Dimensions,
   KeyboardAvoidingView,
@@ -14,13 +20,38 @@ import {
   View,
 } from 'react-native';
 
+import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 
 const { width: windowWidth } = Dimensions.get('window');
 
+function formatBirthDate(date: Date) {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear());
+  return `${day}/${month}/${year}`;
+}
+
 export function RegisterScreen() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const [birthDate, setBirthDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [today] = useState(() => new Date());
   const panelRadius = Math.min(86, windowWidth * 0.22);
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
+
+  function handleDateChange(event: DateTimePickerEvent, selectedDate?: Date) {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+
+    if (event.type === 'dismissed' || !selectedDate) {
+      return;
+    }
+
+    setBirthDate(selectedDate);
+  }
 
   return (
     <View style={styles.root}>
@@ -35,9 +66,11 @@ export function RegisterScreen() {
         ]}
       >
         <View style={styles.header}>
-          <View style={styles.backIcon}>
-            <FontAwesome5 name="arrow-left" size={20} color="#FFFFFF" />
-          </View>
+          <Pressable onPress={() => navigation.navigate('Login')}>
+            <View style={styles.backIcon}>
+              <FontAwesome5 name="arrow-left" size={20} color="#FFFFFF" />
+            </View>
+          </Pressable>
         </View>
       </SafeAreaView>
 
@@ -65,7 +98,9 @@ export function RegisterScreen() {
           >
             <View style={styles.titleBlock}>
               <Text style={styles.title}>Crea tu cuenta</Text>
-              <Text style={styles.subtitle}>Ya tenes una cuenta? Inicia sesion</Text>
+              <Pressable onPress={() => navigation.navigate('Login')}>
+                <Text style={styles.subtitle}>Ya tenes una cuenta? Inicia sesion</Text>
+              </Pressable>
             </View>
 
             <View style={styles.field}>
@@ -105,12 +140,23 @@ export function RegisterScreen() {
 
             <View style={styles.field}>
               <Text style={styles.label}>FECHA DE NACIMIENTO</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Selecciona"
-                placeholderTextColor={colors.inputText}
-                editable={false}
-              />
+              <Pressable
+                style={[styles.input, styles.dateField]}
+                onPress={() => setShowDatePicker((visible) => !visible)}
+              >
+                <Text style={styles.dateText}>
+                  {birthDate ? formatBirthDate(birthDate) : 'Selecciona'}
+                </Text>
+              </Pressable>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={birthDate ?? today}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  maximumDate={today}
+                  onChange={handleDateChange}
+                />
+              )}
             </View>
 
             <Pressable style={styles.button}>
@@ -188,6 +234,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: colors.inputBackground,
     borderRadius: 18,
+    color: colors.inputText,
+    fontSize: 16,
+  },
+  dateField: {
+    justifyContent: 'center',
+  },
+  dateText: {
     color: colors.inputText,
     fontSize: 16,
   },

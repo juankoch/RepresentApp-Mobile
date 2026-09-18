@@ -1,4 +1,6 @@
 import { FontAwesome5 } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import {
   Dimensions,
@@ -15,11 +17,14 @@ import {
 } from 'react-native';
 
 import { RaLogo } from '../components/RaLogo';
+import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 
 const { width: windowWidth } = Dimensions.get('window');
 
 export function LoginScreen() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const logoSize = Math.min(92, Math.max(72, windowWidth * 0.22));
   const panelRadius = Math.min(86, windowWidth * 0.22);
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
@@ -96,7 +101,9 @@ export function LoginScreen() {
             </Pressable>
 
             <Text style={styles.link}>Olvidaste tu contraseña?</Text>
-            <Text style={styles.register}>Registrate!</Text>
+            <Pressable onPress={() => navigation.navigate('Register')}>
+              <Text style={styles.register}>Registrate!</Text>
+            </Pressable>
 
             <View style={styles.socialSpacer} />
 
