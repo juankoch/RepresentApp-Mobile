@@ -3,4 +3,6 @@ export type AuthStackParamList = {
   Register: undefined;
   CreateProfile: undefined;
   Home: undefined;
+  Trials: undefined;
+  TrialDetail: { trialId: string };
 };
