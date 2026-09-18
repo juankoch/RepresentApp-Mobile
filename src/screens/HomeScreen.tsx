@@ -1,4 +1,6 @@
 import { FontAwesome5 } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import {
   Dimensions,
@@ -13,6 +15,8 @@ import {
   View,
 } from 'react-native';
 
+import { PlayerTabBar } from '../components/PlayerTabBar';
+import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 
 const { width: windowWidth } = Dimensions.get('window');
@@ -100,6 +104,9 @@ const quickAccess = [
 ] as const;
 
 export function HomeScreen() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
@@ -171,26 +178,46 @@ export function HomeScreen() {
           </View>
 
           <View style={styles.quickRow}>
-            {quickAccess.map((item) => (
-              <View key={item.title} style={styles.quickItem}>
-                <View style={styles.quickIconWrap}>
-                  <View style={styles.quickIcon}>
-                    <FontAwesome5
-                      name={item.icon}
-                      size={18}
-                      color={colors.homeAccent}
-                    />
-                  </View>
-                  {'badge' in item && item.badge ? (
-                    <View style={styles.quickBadge}>
-                      <Text style={styles.badgeText}>{item.badge}</Text>
+            {quickAccess.map((item) => {
+              const inner = (
+                <>
+                  <View style={styles.quickIconWrap}>
+                    <View style={styles.quickIcon}>
+                      <FontAwesome5
+                        name={item.icon}
+                        size={18}
+                        color={colors.homeAccent}
+                      />
                     </View>
-                  ) : null}
+                    {'badge' in item && item.badge ? (
+                      <View style={styles.quickBadge}>
+                        <Text style={styles.badgeText}>{item.badge}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.quickTitle}>{item.title}</Text>
+                  <Text style={styles.quickSubtitle}>{item.subtitle}</Text>
+                </>
+              );
+
+              if (item.title === 'Pruebas') {
+                return (
+                  <Pressable
+                    key={item.title}
+                    style={styles.quickItem}
+                    onPress={() => navigation.navigate('Trials')}
+                  >
+                    {inner}
+                  </Pressable>
+                );
+              }
+
+              return (
+                <View key={item.title} style={styles.quickItem}>
+                  {inner}
                 </View>
-                <Text style={styles.quickTitle}>{item.title}</Text>
-                <Text style={styles.quickSubtitle}>{item.subtitle}</Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
 
           <View style={styles.sectionHeader}>
@@ -282,29 +309,7 @@ export function HomeScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.tabBar}>
-        <View style={styles.tabItem}>
-          <FontAwesome5 name="home" solid size={18} color={colors.homeAccent} />
-          <Text style={styles.tabLabelActive}>Inicio</Text>
-        </View>
-        <View style={styles.tabItem}>
-          <View>
-            <FontAwesome5 name="comment" size={18} color={colors.homeMuted} />
-            <View style={styles.tabBadge}>
-              <Text style={styles.badgeText}>1</Text>
-            </View>
-          </View>
-          <Text style={styles.tabLabel}>Mensajes</Text>
-        </View>
-        <View style={styles.tabItem}>
-          <FontAwesome5 name="search" size={18} color={colors.homeMuted} />
-          <Text style={styles.tabLabel}>Buscar</Text>
-        </View>
-        <View style={styles.tabItem}>
-          <FontAwesome5 name="user" size={18} color={colors.homeMuted} />
-          <Text style={styles.tabLabel}>Perfil</Text>
-        </View>
-      </View>
+      <PlayerTabBar />
     </View>
   );
 }
@@ -634,38 +639,5 @@ const styles = StyleSheet.create({
     color: colors.homeHeader,
     fontSize: 12,
     fontWeight: '800',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.homeHeader,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
-    paddingHorizontal: 12,
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  tabLabel: {
-    color: colors.homeMuted,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  tabLabelActive: {
-    color: colors.homeAccent,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  tabBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -10,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: colors.homeBadge,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
