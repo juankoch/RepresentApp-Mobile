@@ -1,4 +1,6 @@
 import { FontAwesome5 } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
@@ -15,6 +17,7 @@ import {
   View,
 } from 'react-native';
 
+import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 
 const { width: windowWidth } = Dimensions.get('window');
@@ -22,6 +25,8 @@ const { width: windowWidth } = Dimensions.get('window');
 type ProfileRole = 'player' | 'agent' | null;
 
 export function CreateProfileScreen() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [role, setRole] = useState<ProfileRole>(null);
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
 
@@ -151,7 +156,10 @@ export function CreateProfileScreen() {
               </View>
             </View>
 
-            <Pressable style={styles.button}>
+            <Pressable
+              style={styles.button}
+              onPress={() => navigation.navigate('Home')}
+            >
               <Text style={styles.buttonText}>Crear</Text>
             </Pressable>
           </ScrollView>
