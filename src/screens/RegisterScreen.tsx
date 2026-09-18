@@ -159,7 +159,10 @@ export function RegisterScreen() {
               )}
             </View>
 
-            <Pressable style={styles.button}>
+            <Pressable
+              style={styles.button}
+              onPress={() => navigation.navigate('Login')}
+            >
               <Text style={styles.buttonText}>Registrate</Text>
             </Pressable>
           </ScrollView>
