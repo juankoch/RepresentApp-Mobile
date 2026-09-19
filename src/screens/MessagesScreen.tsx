@@ -20,6 +20,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { usePlayerMessages } from '../context/PlayerMessagesContext';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
+import { useBrandColors } from '../theme/useBrandColors';
 import { matchesSearch } from '../utils/search';
 
 type MessagesTab = 'all' | 'requests';
@@ -27,6 +28,7 @@ type MessagesTab = 'all' | 'requests';
 export function MessagesScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'Messages'>>();
   const { conversations, requests, deleteConversation, acceptRequest, rejectRequest } =
     usePlayerMessages();
@@ -51,7 +53,7 @@ export function MessagesScreen() {
   );
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: brand.header }]}>
       <StatusBar style="light" />
 
       <View
@@ -62,22 +64,30 @@ export function MessagesScreen() {
             : { paddingTop: (RNStatusBar.currentHeight ?? 0) + 8 },
         ]}
       >
-        <Text style={styles.headerTitle}>Mensajes</Text>
+        <View style={styles.headerTitleRow}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() => navigation.navigate('Home')}
+          >
+            <FontAwesome5 name="arrow-left" size={16} color="#FFFFFF" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Mensajes</Text>
+        </View>
         <View style={styles.tabs}>
           <Pressable style={styles.tab} onPress={() => { setTab('all'); setOpenRowId(null); }}>
-            <Text style={[styles.tabLabel, tab === 'all' && styles.tabLabelActive]}>
+            <Text style={[styles.tabLabel, { color: brand.muted }, tab === 'all' && styles.tabLabelActive]}>
               Todas
             </Text>
-            {tab === 'all' ? <View style={styles.tabUnderline} /> : <View style={styles.tabSpacer} />}
+            {tab === 'all' ? <View style={[styles.tabUnderline, { backgroundColor: brand.accent }]} /> : <View style={styles.tabSpacer} />}
           </Pressable>
           <Pressable style={styles.tab} onPress={() => { setTab('requests'); setOpenRowId(null); }}>
             <Text
-              style={[styles.tabLabel, tab === 'requests' && styles.tabLabelActive]}
+              style={[styles.tabLabel, { color: brand.muted }, tab === 'requests' && styles.tabLabelActive]}
             >
               Solicitudes
             </Text>
             {tab === 'requests' ? (
-              <View style={styles.tabUnderline} />
+              <View style={[styles.tabUnderline, { backgroundColor: brand.accent }]} />
             ) : (
               <View style={styles.tabSpacer} />
             )}
@@ -222,11 +232,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 8,
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: {
     color: '#FFFFFF',
     fontSize: 28,
     fontWeight: '800',
-    marginBottom: 16,
   },
   tabs: {
     flexDirection: 'row',

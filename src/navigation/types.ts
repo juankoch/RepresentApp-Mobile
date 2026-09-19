@@ -1,10 +1,25 @@
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
+  ForgotPassword: undefined;
   CreateProfile: undefined;
   Home: undefined;
-  Trials: { initialTab?: 'all' } | undefined;
+  Trials: { initialTab?: 'all' | 'pending' | 'publish' | 'mine' } | undefined;
   TrialDetail: { trialId: string };
   Messages: { initialTab?: 'all' | 'requests' };
   Chat: { conversationId: string };
+  Search: undefined;
+  Profile: { userId?: string } | undefined;
+  Settings: undefined;
+  ConnectionRequests: undefined;
+  Connections: undefined;
+  PeopleList: { kind: 'player' | 'agent' };
+  Premium: undefined;
+  EditProfile: undefined;
+  UserOptions: { userId: string };
+  RateUser: { userId: string };
+  ReportUser: { userId: string };
+  BlockUser: { userId: string };
+  DeleteAccount: undefined;
+  Highlights: undefined;
 };

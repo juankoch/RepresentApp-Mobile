@@ -20,10 +20,12 @@ import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerMessages } from '../context/PlayerMessagesContext';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
+import { useBrandColors } from '../theme/useBrandColors';
 
 export function ChatScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'Chat'>>();
   const { conversations, sendMessage } = usePlayerMessages();
   const [draft, setDraft] = useState('');
@@ -33,7 +35,7 @@ export function ChatScreen() {
 
   if (!conversation) {
     return (
-      <View style={styles.root}>
+      <View style={[styles.root, { backgroundColor: brand.header }]}>
         <StatusBar style="light" />
         <View style={styles.missing}>
           <Text style={styles.missingText}>Esta conversación ya no está disponible.</Text>
@@ -49,7 +51,7 @@ export function ChatScreen() {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: brand.header }]}>
       <StatusBar style="light" />
 
       <View
@@ -66,13 +68,20 @@ export function ChatScreen() {
         >
           <FontAwesome5 name="arrow-left" size={16} color="#FFFFFF" />
         </Pressable>
-        <View style={styles.headerCenter}>
+        <Pressable
+          style={styles.headerCenter}
+          onPress={() => {
+            if (conversation.profileId) {
+              navigation.push('Profile', { userId: conversation.profileId });
+            }
+          }}
+        >
           <Image source={conversation.avatar} style={styles.headerAvatar} />
           <View>
             <Text style={styles.headerName}>{conversation.name}</Text>
             <Text style={styles.headerRole}>{conversation.role}</Text>
           </View>
-        </View>
+        </Pressable>
         <View style={styles.headerSide}>
           <FontAwesome5 name="ellipsis-v" size={16} color="#FFFFFF" />
         </View>
@@ -132,8 +141,8 @@ export function ChatScreen() {
             value={draft}
             onChangeText={setDraft}
           />
-          <Pressable
-            style={styles.sendButton}
+            <Pressable
+              style={[styles.sendButton, { backgroundColor: brand.header }]}
             onPress={() => {
               sendMessage(conversation.id, draft);
               setDraft('');

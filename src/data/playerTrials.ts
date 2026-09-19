@@ -9,6 +9,9 @@ export type PlayerTrial = {
   description: string;
   crest: number;
   hero: number;
+  status?: 'active' | 'finished';
+  applicants?: number;
+  applicantIds?: string[];
 };
 
 export const playerTrials: PlayerTrial[] = [
@@ -67,5 +70,43 @@ export const playerTrials: PlayerTrial[] = [
 ];
 
 export function getPlayerTrialById(id: string) {
-  return playerTrials.find((trial) => trial.id === id);
+  return (
+    playerTrials.find((trial) => trial.id === id) ??
+    initialPublishedTrials.find((trial) => trial.id === id)
+  );
 }
+
+export const initialPublishedTrials: PlayerTrial[] = [
+  {
+    id: 'agent-sub20',
+    name: 'Prueba de jugadores Sub 20',
+    club: 'Agencia Fútbol Global',
+    date: '15 de julio',
+    ageRange: 'Sub 20',
+    location: 'Buenos Aires',
+    evaluationType: 'Evaluación presencial',
+    description:
+      'Convocatoria para futbolistas Sub 20 con proyección. La jornada evalúa perfil técnico, físico y competitivo frente al cuerpo de scouting de la agencia.',
+    crest: require('../../assets/mock/agent-marco.png'),
+    hero: require('../../assets/mock/trial-hero.png'),
+    status: 'active',
+    applicants: 22,
+    applicantIds: ['mateo-ruiz', 'santiago-lopez', 'valentin-diaz'],
+  },
+  {
+    id: 'agent-defensores',
+    name: 'Prueba de defensores',
+    club: 'Agencia Fútbol Global',
+    date: '3 de julio',
+    ageRange: 'Sub 17',
+    location: 'Córdoba',
+    evaluationType: 'Evaluación presencial',
+    description:
+      'Prueba cerrada para defensores centrales y laterales. El objetivo es detectar perfiles para seguimiento y representación.',
+    crest: require('../../assets/mock/crest-racing.png'),
+    hero: require('../../assets/mock/trial-hero.png'),
+    status: 'finished',
+    applicants: 18,
+    applicantIds: ['tobias-fernandez'],
+  },
+];

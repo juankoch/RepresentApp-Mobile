@@ -103,7 +103,9 @@ export function LoginScreen() {
               <Text style={styles.buttonText}>Ingresa</Text>
             </Pressable>
 
-            <Text style={styles.link}>Olvidaste tu contraseña?</Text>
+            <Pressable onPress={() => navigation.navigate('ForgotPassword')}>
+              <Text style={styles.link}>Olvidaste tu contraseña?</Text>
+            </Pressable>
             <Pressable onPress={() => navigation.navigate('Register')}>
               <Text style={styles.register}>Registrate!</Text>
             </Pressable>
@@ -111,15 +113,24 @@ export function LoginScreen() {
             <View style={styles.socialSpacer} />
 
             <View style={styles.socialRow}>
-              <View style={[styles.socialCircle, styles.instagramCircle]}>
+              <Pressable
+                style={[styles.socialCircle, styles.instagramCircle]}
+                onPress={() => navigation.navigate('CreateProfile')}
+              >
                 <FontAwesome5 name="instagram" size={20} color="#FFFFFF" brand />
-              </View>
-              <View style={[styles.socialCircle, styles.googleCircle]}>
+              </Pressable>
+              <Pressable
+                style={[styles.socialCircle, styles.googleCircle]}
+                onPress={() => navigation.navigate('CreateProfile')}
+              >
                 <FontAwesome5 name="google" size={18} color="#DB4437" brand />
-              </View>
-              <View style={[styles.socialCircle, styles.facebookCircle]}>
+              </Pressable>
+              <Pressable
+                style={[styles.socialCircle, styles.facebookCircle]}
+                onPress={() => navigation.navigate('CreateProfile')}
+              >
                 <FontAwesome5 name="facebook" size={20} color="#FFFFFF" brand />
-              </View>
+              </Pressable>
             </View>
           </ScrollView>
         </View>

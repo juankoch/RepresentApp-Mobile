@@ -14,21 +14,25 @@ import {
 } from 'react-native';
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
+import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { usePlayerTrials } from '../context/PlayerTrialsContext';
-import { getPlayerTrialById } from '../data/playerTrials';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
+import { useBrandColors } from '../theme/useBrandColors';
 
 export function TrialDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const route = useRoute<RouteProp<AuthStackParamList, 'TrialDetail'>>();
-  const { applyToTrial, hasApplied } = usePlayerTrials();
-  const trial = getPlayerTrialById(route.params.trialId);
+  const { applyToTrial, hasApplied, getTrial } = usePlayerTrials();
+  const { role, getProfile } = usePlayerProfile();
+  const brand = useBrandColors();
+  const trial = getTrial(route.params.trialId);
+  const isAgent = role === 'agent';
 
   if (!trial) {
     return (
-      <View style={styles.root}>
+      <View style={[styles.root, { backgroundColor: brand.header }]}>
         <StatusBar style="light" />
         <View style={styles.missing}>
           <Text style={styles.missingText}>No encontramos esta prueba.</Text>
@@ -44,7 +48,7 @@ export function TrialDetailScreen() {
   const applied = hasApplied(trial.id);
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: brand.header }]}>
       <StatusBar style="light" />
 
       <View
@@ -86,7 +90,7 @@ export function TrialDetailScreen() {
               <FontAwesome5
                 name="calendar-alt"
                 size={14}
-                color={colors.homeHeader}
+                color={brand.header}
               />
               <Text style={styles.infoText}>{trial.date}</Text>
             </View>
@@ -94,21 +98,62 @@ export function TrialDetailScreen() {
               <FontAwesome5
                 name="user-friends"
                 size={14}
-                color={colors.homeHeader}
+                color={brand.header}
               />
               <Text style={styles.infoText}>{trial.ageRange}</Text>
             </View>
           </View>
 
           <View style={styles.infoItem}>
-            <FontAwesome5 name="clipboard" size={14} color={colors.homeHeader} />
+            <FontAwesome5 name="clipboard" size={14} color={brand.header} />
             <Text style={styles.infoText}>{trial.evaluationType}</Text>
           </View>
 
           <Text style={styles.sectionTitle}>Sobre la prueba</Text>
           <Text style={styles.description}>{trial.description}</Text>
 
-          {applied ? (
+          {isAgent ? (
+            <View>
+              <View
+                style={[
+                  styles.appliedButton,
+                  {
+                    backgroundColor: trial.status === 'finished' ? '#9BB8AE' : brand.header,
+                  },
+                ]}
+              >
+                <Text style={styles.appliedButtonText}>
+                  {trial.status === 'finished' ? 'Prueba finalizada' : 'Prueba activa'}
+                </Text>
+              </View>
+              <Text style={styles.sectionTitle}>Postulantes</Text>
+              <Text style={styles.description}>
+                {trial.applicants ?? 0} jugadores se postularon a esta prueba.
+              </Text>
+              {(trial.applicantIds ?? []).map((userId) => {
+                const applicant = getProfile(userId);
+                if (!applicant) {
+                  return null;
+                }
+                return (
+                  <Pressable
+                    key={userId}
+                    style={styles.applicantRow}
+                    onPress={() =>
+                      navigation.push('Profile', { userId: applicant.id })
+                    }
+                  >
+                    <Image source={applicant.photo} style={styles.applicantPhoto} />
+                    <View style={styles.applicantCopy}>
+                      <Text style={styles.applicantName}>{applicant.name}</Text>
+                      <Text style={styles.applicantMeta}>{applicant.location}</Text>
+                    </View>
+                    <FontAwesome5 name="chevron-right" size={12} color="#B0B0B0" />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : applied ? (
             <View style={styles.appliedBlock}>
               <View style={styles.appliedButton}>
                 <FontAwesome5 name="check" size={14} color="#FFFFFF" />
@@ -120,7 +165,7 @@ export function TrialDetailScreen() {
             </View>
           ) : (
             <Pressable
-              style={styles.applyButton}
+              style={[styles.applyButton, { backgroundColor: brand.header }]}
               onPress={() => applyToTrial(trial.id)}
             >
               <Text style={styles.applyButtonText}>Postularse</Text>
@@ -288,5 +333,31 @@ const styles = StyleSheet.create({
     color: colors.homeHeader,
     fontSize: 14,
     fontWeight: '700',
+  },
+  applicantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    gap: 12,
+  },
+  applicantPhoto: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.inputBackground,
+  },
+  applicantCopy: {
+    flex: 1,
+  },
+  applicantName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  applicantMeta: {
+    marginTop: 2,
+    color: '#8A8A8A',
+    fontSize: 12,
   },
 });

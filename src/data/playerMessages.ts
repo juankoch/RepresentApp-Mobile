@@ -8,6 +8,7 @@ export type ChatMessage = {
 
 export type Conversation = {
   id: string;
+  profileId?: string;
   name: string;
   role: string;
   preview: string;
@@ -19,6 +20,7 @@ export type Conversation = {
 
 export type MessageRequest = {
   id: string;
+  profileId?: string;
   name: string;
   role: string;
   subtitle: string;
@@ -28,6 +30,7 @@ export type MessageRequest = {
 export const initialConversations: Conversation[] = [
   {
     id: 'marcos',
+    profileId: 'marcos-gomez',
     name: 'Marcos Gómez',
     role: 'Representante',
     preview: 'Dale, nos vemos mañana.',
@@ -51,6 +54,7 @@ export const initialConversations: Conversation[] = [
   },
   {
     id: 'adelina',
+    profileId: 'adelina-perez',
     name: 'Adelina Perez',
     role: 'Representante',
     preview: 'Dale, muchas gracias!',
@@ -95,6 +99,7 @@ export const initialConversations: Conversation[] = [
   },
   {
     id: 'sofia',
+    profileId: 'sofia-ramirez',
     name: 'Sofía Ramírez',
     role: 'Representante',
     preview: 'Te paso la información.',
@@ -112,6 +117,7 @@ export const initialConversations: Conversation[] = [
   },
   {
     id: 'juan-perez',
+    profileId: 'juan-perez',
     name: 'Juan Pérez',
     role: 'Representante',
     preview: 'Perfecto, gracias!',
@@ -136,6 +142,7 @@ export const initialConversations: Conversation[] = [
   },
   {
     id: 'racing',
+    profileId: 'racing',
     name: 'Club Atlético Racing',
     role: 'Club',
     preview: 'Nos comunicaremos pronto.',
@@ -153,6 +160,7 @@ export const initialConversations: Conversation[] = [
   },
   {
     id: 'agustin',
+    profileId: 'agustin-torres',
     name: 'Agustín Torres',
     role: 'Representante',
     preview: '¿Tenés disponibilidad?',
@@ -170,6 +178,7 @@ export const initialConversations: Conversation[] = [
   },
   {
     id: 'lucia',
+    profileId: 'lucia-fernandez',
     name: 'Lucía Fernández',
     role: 'Representante',
     preview: 'Gracias por el mensaje.',
@@ -197,6 +206,7 @@ export const initialMessageRequests: MessageRequest[] = [
   },
   {
     id: 'req-gaston',
+    profileId: 'gaston-martirena',
     name: 'Gastón Martirena',
     role: 'Representante',
     subtitle: 'MG Management',
@@ -204,6 +214,7 @@ export const initialMessageRequests: MessageRequest[] = [
   },
   {
     id: 'req-huracan',
+    profileId: 'huracan',
     name: 'Club Atlético Huracán',
     role: 'Club',
     subtitle: 'Área de captación',
@@ -211,6 +222,7 @@ export const initialMessageRequests: MessageRequest[] = [
   },
   {
     id: 'req-carla',
+    profileId: 'carla-nunez',
     name: 'Carla Núñez',
     role: 'Representante',
     subtitle: 'Núñez & Asociados',
@@ -218,9 +230,81 @@ export const initialMessageRequests: MessageRequest[] = [
   },
   {
     id: 'req-lucas',
+    profileId: 'lucas-romero',
     name: 'Lucas Romero',
     role: 'Representante',
     subtitle: 'LR Sports',
     avatar: require('../../assets/mock/msg-lucas-r.png'),
+  },
+];
+
+export const agentConversations: Conversation[] = [
+  {
+    id: 'mateo',
+    profileId: 'mateo-ruiz',
+    name: 'Mateo Ruiz',
+    role: 'Jugador',
+    preview: 'Perfecto, gracias Rodrigo.',
+    time: '11:10',
+    unread: 1,
+    avatar: require('../../assets/mock/player-mateo.png'),
+    messages: [
+      {
+        id: 'mateo-1',
+        fromMe: false,
+        text: 'Hola Rodrigo, te confirmo que llego a la prueba.',
+        time: '11:05',
+      },
+      {
+        id: 'mateo-2',
+        fromMe: true,
+        text: 'Dale Mateo, te esperamos.',
+        time: '11:08',
+        status: 'read',
+      },
+      {
+        id: 'mateo-3',
+        fromMe: false,
+        text: 'Perfecto, gracias Rodrigo.',
+        time: '11:10',
+      },
+    ],
+  },
+  {
+    id: 'santiago',
+    profileId: 'santiago-lopez',
+    name: 'Santiago López',
+    role: 'Jugador',
+    preview: '¿A qué hora es la reunión?',
+    time: '09:42',
+    unread: 0,
+    avatar: require('../../assets/mock/player-santiago.png'),
+    messages: [
+      {
+        id: 'santiago-1',
+        fromMe: false,
+        text: '¿A qué hora es la reunión?',
+        time: '09:42',
+      },
+    ],
+  },
+];
+
+export const agentMessageRequests: MessageRequest[] = [
+  {
+    id: 'req-valentin',
+    profileId: 'valentin-diaz',
+    name: 'Valentín Díaz',
+    role: 'Jugador',
+    subtitle: 'Defensor · 2006',
+    avatar: require('../../assets/mock/player-valentin.png'),
+  },
+  {
+    id: 'req-tobias',
+    profileId: 'tobias-fernandez',
+    name: 'Tobías Fernández',
+    role: 'Jugador',
+    subtitle: 'Arquero · 2007',
+    avatar: require('../../assets/mock/player-tobias.png'),
   },
 ];
