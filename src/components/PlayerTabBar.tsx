@@ -3,19 +3,22 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { OWN_PROFILE_ID } from '../data/playerProfiles';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
+import { useBrandColors } from '../theme/useBrandColors';
 
 type PlayerTabBarProps = {
-  activeTab?: 'home' | 'messages';
+  activeTab?: 'home' | 'messages' | 'search' | 'profile';
 };
 
 export function PlayerTabBar({ activeTab = 'home' }: PlayerTabBarProps) {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const brand = useBrandColors();
 
   return (
-    <View style={styles.tabBar}>
+    <View style={[styles.tabBar, { backgroundColor: brand.header }]}>
       <Pressable
         style={styles.tabItem}
         onPress={() => navigation.navigate('Home')}
@@ -24,10 +27,14 @@ export function PlayerTabBar({ activeTab = 'home' }: PlayerTabBarProps) {
           name="home"
           solid
           size={18}
-          color={activeTab === 'home' ? colors.homeAccent : colors.homeMuted}
+          color={activeTab === 'home' ? brand.accent : brand.muted}
         />
         <Text
-          style={activeTab === 'home' ? styles.tabLabelActive : styles.tabLabel}
+          style={[
+            styles.tabLabel,
+            { color: activeTab === 'home' ? brand.accent : brand.muted },
+            activeTab === 'home' && styles.tabLabelActive,
+          ]}
         >
           Inicio
         </Text>
@@ -41,28 +48,62 @@ export function PlayerTabBar({ activeTab = 'home' }: PlayerTabBarProps) {
             name="comment"
             solid={activeTab === 'messages'}
             size={18}
-            color={activeTab === 'messages' ? colors.homeAccent : colors.homeMuted}
+            color={activeTab === 'messages' ? brand.accent : brand.muted}
           />
           <View style={styles.tabBadge}>
             <Text style={styles.badgeText}>1</Text>
           </View>
         </View>
         <Text
-          style={
-            activeTab === 'messages' ? styles.tabLabelActive : styles.tabLabel
-          }
+          style={[
+            styles.tabLabel,
+            { color: activeTab === 'messages' ? brand.accent : brand.muted },
+            activeTab === 'messages' && styles.tabLabelActive,
+          ]}
         >
           Mensajes
         </Text>
       </Pressable>
-      <View style={styles.tabItem}>
-        <FontAwesome5 name="search" size={18} color={colors.homeMuted} />
-        <Text style={styles.tabLabel}>Buscar</Text>
-      </View>
-      <View style={styles.tabItem}>
-        <FontAwesome5 name="user" size={18} color={colors.homeMuted} />
-        <Text style={styles.tabLabel}>Perfil</Text>
-      </View>
+      <Pressable
+        style={styles.tabItem}
+        onPress={() => navigation.navigate('Search')}
+      >
+        <FontAwesome5
+          name="search"
+          solid={activeTab === 'search'}
+          size={18}
+          color={activeTab === 'search' ? brand.accent : brand.muted}
+        />
+        <Text
+          style={[
+            styles.tabLabel,
+            { color: activeTab === 'search' ? brand.accent : brand.muted },
+            activeTab === 'search' && styles.tabLabelActive,
+          ]}
+        >
+          Buscar
+        </Text>
+      </Pressable>
+      <Pressable
+        style={styles.tabItem}
+        onPress={() => navigation.navigate('Profile', { userId: OWN_PROFILE_ID })}
+      >
+        <FontAwesome5
+          name="user"
+          solid={activeTab === 'profile'}
+          size={18}
+          color={activeTab === 'profile' ? brand.accent : brand.muted}
+        />
+        <Text
+          style={[
+            styles.tabLabel,
+            { color: activeTab === 'profile' ? brand.accent : brand.muted },
+            activeTab === 'profile' && styles.tabLabelActive,
+          ]}
+        >
+          Perfil
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -86,7 +127,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   tabLabelActive: {
-    color: colors.homeAccent,
     fontSize: 11,
     fontWeight: '700',
   },

@@ -18,4 +18,10 @@ export const colors = {
   homeMuted: '#9BB8AE',
   homeBadge: '#E53935',
   homeStar: '#F5C518',
+  homeSoft: '#E7F8DC',
+  agentHeader: '#6B4F12',
+  agentHeaderAlt: '#806016',
+  agentAccent: '#F5C518',
+  agentMuted: '#D4C49A',
+  agentSoft: '#F8EFC2',
 };

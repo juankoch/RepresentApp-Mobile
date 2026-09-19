@@ -2,16 +2,20 @@ import {
   createContext,
   ReactNode,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
 
 import {
+  agentConversations,
+  agentMessageRequests,
   Conversation,
   initialConversations,
   initialMessageRequests,
   MessageRequest,
 } from '../data/playerMessages';
+import { usePlayerProfile } from './PlayerProfileContext';
 
 type PlayerMessagesContextValue = {
   conversations: Conversation[];
@@ -20,6 +24,7 @@ type PlayerMessagesContextValue = {
   deleteConversation: (conversationId: string) => void;
   acceptRequest: (requestId: string) => void;
   rejectRequest: (requestId: string) => void;
+  resetSession: () => void;
 };
 
 const PlayerMessagesContext = createContext<
@@ -34,8 +39,19 @@ function currentTimeLabel() {
 }
 
 export function PlayerMessagesProvider({ children }: { children: ReactNode }) {
+  const { role } = usePlayerProfile();
   const [conversations, setConversations] = useState(initialConversations);
   const [requests, setRequests] = useState(initialMessageRequests);
+
+  useEffect(() => {
+    if (role === 'agent') {
+      setConversations(agentConversations);
+      setRequests(agentMessageRequests);
+      return;
+    }
+    setConversations(initialConversations);
+    setRequests(initialMessageRequests);
+  }, [role]);
 
   const value = useMemo<PlayerMessagesContextValue>(
     () => ({
@@ -88,6 +104,7 @@ export function PlayerMessagesProvider({ children }: { children: ReactNode }) {
           return [
             {
               id: requestId,
+              profileId: request.profileId,
               name: request.name,
               role: request.role,
               preview: 'Conversación iniciada',
@@ -103,8 +120,17 @@ export function PlayerMessagesProvider({ children }: { children: ReactNode }) {
       rejectRequest: (requestId) => {
         setRequests((current) => current.filter((item) => item.id !== requestId));
       },
+      resetSession: () => {
+        if (role === 'agent') {
+          setConversations(agentConversations);
+          setRequests(agentMessageRequests);
+          return;
+        }
+        setConversations(initialConversations);
+        setRequests(initialMessageRequests);
+      },
     }),
-    [conversations, requests],
+    [conversations, requests, role],
   );
 
   return (

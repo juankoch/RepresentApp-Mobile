@@ -19,6 +19,7 @@ import {
 
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
+import { usePlayerProfile } from '../context/PlayerProfileContext';
 
 const { width: windowWidth } = Dimensions.get('window');
 
@@ -27,8 +28,62 @@ type ProfileRole = 'player' | 'agent' | null;
 export function CreateProfileScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const { startSession } = usePlayerProfile();
   const [role, setRole] = useState<ProfileRole>(null);
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [position, setPosition] = useState('');
+  const [club, setClub] = useState('');
+  const [category, setCategory] = useState('');
+  const [description, setDescription] = useState('');
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
+
+  function createProfile() {
+    if (!role) {
+      return;
+    }
+
+    if (role === 'agent') {
+      startSession('agent', {
+        name: name.trim(),
+        about: description.trim(),
+      });
+    } else {
+      startSession('player', {
+        name: name.trim(),
+        fields: [
+          {
+            icon: 'futbol',
+            label: 'Posición',
+            value: position.trim() || 'Delantero',
+          },
+          {
+            icon: 'calendar-alt',
+            label: 'Edad',
+            value: age.trim()
+              ? age.trim().includes('año')
+                ? age.trim()
+                : `${age.trim()} años`
+              : '21 años',
+          },
+          { icon: 'arrows-alt-v', label: 'Altura', value: '1,83 m' },
+          { icon: 'walking', label: 'Pierna hábil', value: 'Derecha' },
+          {
+            icon: 'shield-alt',
+            label: 'Club actual',
+            value: club.trim() || 'Racing Club',
+          },
+          {
+            icon: 'user-tie',
+            label: 'Representante',
+            value: 'Sin representante',
+          },
+        ],
+      });
+    }
+
+    navigation.navigate('Home');
+  }
 
   return (
     <View style={styles.root}>
@@ -71,6 +126,8 @@ export function CreateProfileScreen() {
                 placeholderTextColor={colors.inputText}
                 autoCapitalize="words"
                 autoCorrect={false}
+                value={name}
+                onChangeText={setName}
               />
             </View>
 
@@ -81,6 +138,8 @@ export function CreateProfileScreen() {
                 placeholder="17"
                 placeholderTextColor={colors.inputText}
                 keyboardType="number-pad"
+                value={age}
+                onChangeText={setAge}
               />
             </View>
 
@@ -93,6 +152,8 @@ export function CreateProfileScreen() {
                   placeholderTextColor={colors.inputText}
                   multiline
                   textAlignVertical="top"
+                  value={description}
+                  onChangeText={setDescription}
                 />
               </View>
             ) : (
@@ -105,6 +166,8 @@ export function CreateProfileScreen() {
                     placeholderTextColor={colors.inputText}
                     autoCapitalize="sentences"
                     autoCorrect={false}
+                    value={position}
+                    onChangeText={setPosition}
                   />
                 </View>
 
@@ -116,6 +179,8 @@ export function CreateProfileScreen() {
                     placeholderTextColor={colors.inputText}
                     autoCapitalize="words"
                     autoCorrect={false}
+                    value={club}
+                    onChangeText={setClub}
                   />
                 </View>
 
@@ -127,6 +192,8 @@ export function CreateProfileScreen() {
                     placeholderTextColor={colors.inputText}
                     autoCapitalize="sentences"
                     autoCorrect={false}
+                    value={category}
+                    onChangeText={setCategory}
                   />
                 </View>
               </>
@@ -157,11 +224,16 @@ export function CreateProfileScreen() {
             </View>
 
             <Pressable
-              style={styles.button}
-              onPress={() => navigation.navigate('Home')}
+              style={[styles.button, !role && styles.buttonDisabled]}
+              onPress={createProfile}
             >
               <Text style={styles.buttonText}>Crear</Text>
             </Pressable>
+            {role ? null : (
+              <Text style={styles.roleHint}>
+                Seleccioná si sos Jugador o Representante para continuar.
+              </Text>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -265,9 +337,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.button,
     borderRadius: 27,
   },
+  buttonDisabled: {
+    opacity: 0.4,
+  },
   buttonText: {
     color: colors.buttonText,
     fontSize: 16,
     fontWeight: '700',
+  },
+  roleHint: {
+    marginTop: 12,
+    color: colors.inputText,
+    fontSize: 13,
+    textAlign: 'center',
   },
 });
