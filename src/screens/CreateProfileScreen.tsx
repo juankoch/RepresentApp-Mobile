@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 
 import { usePlayerProfile } from '../context/PlayerProfileContext';
+import { findOrCreateClubId } from '../lib/clubes';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -54,8 +55,8 @@ function birthDateFromMetadata(value: unknown): string | null {
 }
 
 async function findIdByName(
-  table: 'roles' | 'posiciones' | 'clubes',
-  idField: 'id_rol' | 'id_posicion' | 'id_club',
+  table: 'roles' | 'posiciones',
+  idField: 'id_rol' | 'id_posicion',
   nombre: string,
 ) {
   const { data, error } = await supabase
@@ -132,7 +133,7 @@ export function CreateProfileScreen() {
           );
         }
         if (club.trim()) {
-          clubId = await findIdByName('clubes', 'id_club', club.trim());
+          clubId = await findOrCreateClubId(club.trim());
         }
       }
 

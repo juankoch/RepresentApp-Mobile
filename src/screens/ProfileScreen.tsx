@@ -22,8 +22,12 @@ import {
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { PremiumBadge } from '../components/PremiumBadge';
 import { ProfileContent } from '../components/ProfileContent';
-import { usePlayerProfile } from '../context/PlayerProfileContext';
+import {
+  fetchCreatedProfileKind,
+  usePlayerProfile,
+} from '../context/PlayerProfileContext';
 import { OWN_PROFILE_ID, ProfileField, UserProfile } from '../data/playerProfiles';
+import { piernaHabilToDisplay } from '../lib/piernaHabil';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -47,6 +51,38 @@ function errorMessage(error: unknown) {
 
 function textValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function experienceDisplay(value: unknown) {
+  let years: number | null = null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    years = value;
+  } else if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value.replace(/[^\d-]/g, ''), 10);
+    years = Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (years == null) {
+    return '';
+  }
+
+  return years === 1 ? '1 año' : `${years} años`;
+}
+
+function alturaDisplay(value: unknown) {
+  let cm: number | null = null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    cm = value;
+  } else if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value.replace(/[^\d-]/g, ''), 10);
+    cm = Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (cm == null) {
+    return '';
+  }
+
+  return `${cm} cm`;
 }
 
 function formatBirthDateDisplay(value: unknown) {
@@ -115,6 +151,7 @@ function emptyOwnFields(kind: 'player' | 'agent'): ProfileField[] {
 
   return [
     { icon: 'futbol', label: 'Posición', value: 'Sin datos' },
+    { icon: 'flag', label: 'Categoría', value: 'Sin datos' },
     { icon: 'calendar-alt', label: 'Edad', value: 'Sin datos' },
     { icon: 'arrows-alt-v', label: 'Altura', value: 'Sin datos' },
     { icon: 'walking', label: 'Pierna hábil', value: 'Sin datos' },
@@ -195,7 +232,7 @@ export function ProfileScreen() {
   const ownProfile = isOwnProfile(userId);
   const profile = getProfile(userId);
   const [ownProfileData, setOwnProfileData] = useState<UserProfile>(() =>
-    emptyOwnProfile('player', currentProfile.photo),
+    emptyOwnProfile(role === 'agent' ? 'agent' : 'player', currentProfile.photo),
   );
 
   useFocusEffect(
@@ -204,8 +241,17 @@ export function ProfileScreen() {
         return;
       }
 
-      let cancelled = false;
-      setOwnProfileData(emptyOwnProfile('player', currentProfile.photo));
+      let isCurrent = true;
+
+      if (role === 'agent') {
+        setOwnProfileData((current) => ({
+          ...emptyOwnProfile('agent', currentProfile.photo),
+          name: currentProfile.name || current.name,
+          email: currentProfile.email || current.email,
+          about: currentProfile.about || current.about,
+          fields: current.kind === 'agent' ? current.fields : emptyOwnFields('agent'),
+        }));
+      }
 
       async function loadOwnProfile() {
         try {
@@ -216,26 +262,28 @@ export function ProfileScreen() {
 
           const user = userData.user;
           if (!user) {
-            if (!cancelled) {
-              setOwnProfileData(emptyOwnProfile('player', currentProfile.photo));
-            }
             return;
+          }
+
+          const { kind: createdKind, error: kindError } =
+            await fetchCreatedProfileKind(user.id);
+          if (kindError) {
+            throw kindError;
           }
 
           const { data: usuario, error: usuarioError } = await supabase
             .from('usuarios')
-            .select('id_usuario, nombre, apellido, email, fecha_nacimiento, fk_rol')
+            .select('id_usuario, nombre, apellido, email, fecha_nacimiento')
             .eq('id_usuario', user.id)
             .maybeSingle();
 
           if (usuarioError) {
             throw usuarioError;
           }
-          if (cancelled) {
+          if (!isCurrent) {
             return;
           }
           if (!usuario) {
-            setOwnProfileData(emptyOwnProfile('player', currentProfile.photo));
             return;
           }
 
@@ -244,24 +292,9 @@ export function ProfileScreen() {
             apellido?: unknown;
             email?: unknown;
             fecha_nacimiento?: unknown;
-            fk_rol?: string | number | null;
           };
 
-          let roleName = '';
-          if (usuarioRow.fk_rol != null) {
-            const { data: roleRow, error: roleError } = await supabase
-              .from('roles')
-              .select('nombre')
-              .eq('id_rol', usuarioRow.fk_rol)
-              .maybeSingle();
-
-            if (roleError) {
-              throw roleError;
-            }
-            roleName = textValue((roleRow as { nombre?: unknown } | null)?.nombre);
-          }
-
-          const isAgent = roleName === 'Representante';
+          const isAgent = role === 'agent' || createdKind === 'agent';
           const kind = isAgent ? 'agent' : 'player';
           const fullName = `${textValue(usuarioRow.nombre)} ${textValue(usuarioRow.apellido)}`.trim();
           const email = textValue(usuarioRow.email);
@@ -274,7 +307,9 @@ export function ProfileScreen() {
           if (isAgent) {
             const { data: agente, error: agenteError } = await supabase
               .from('perfiles_representante')
-              .select('descripcion')
+              .select(
+                'descripcion, empresa, anios_experiencia, especialidad, zona, enfoque',
+              )
               .eq('id_usuario', user.id)
               .maybeSingle();
 
@@ -282,13 +317,54 @@ export function ProfileScreen() {
               throw agenteError;
             }
 
-            about = valueOrPlaceholder(
-              textValue((agente as { descripcion?: unknown } | null)?.descripcion),
-            );
+            const agenteRow = agente as {
+              descripcion?: unknown;
+              empresa?: unknown;
+              anios_experiencia?: unknown;
+              especialidad?: unknown;
+              zona?: unknown;
+              enfoque?: unknown;
+            } | null;
+            about = valueOrPlaceholder(textValue(agenteRow?.descripcion));
+            fields = emptyOwnFields('agent').map((field) => {
+              switch (field.label) {
+                case 'Agencia':
+                  return {
+                    ...field,
+                    value: valueOrPlaceholder(textValue(agenteRow?.empresa)),
+                  };
+                case 'Experiencia':
+                  return {
+                    ...field,
+                    value: valueOrPlaceholder(
+                      experienceDisplay(agenteRow?.anios_experiencia),
+                    ),
+                  };
+                case 'Especialidad':
+                  return {
+                    ...field,
+                    value: valueOrPlaceholder(textValue(agenteRow?.especialidad)),
+                  };
+                case 'Zona':
+                  return {
+                    ...field,
+                    value: valueOrPlaceholder(textValue(agenteRow?.zona)),
+                  };
+                case 'Enfoque':
+                  return {
+                    ...field,
+                    value: valueOrPlaceholder(textValue(agenteRow?.enfoque)),
+                  };
+                default:
+                  return field;
+              }
+            });
           } else {
             const { data: jugador, error: jugadorError } = await supabase
               .from('perfiles_jugador')
-              .select('categoria, fk_posicion, fk_club_actual')
+              .select(
+                'categoria, fk_posicion, fk_club_actual, pierna_habil, descripcion, altura_cm',
+              )
               .eq('id_usuario', user.id)
               .maybeSingle();
 
@@ -300,7 +376,11 @@ export function ProfileScreen() {
               categoria?: unknown;
               fk_posicion?: string | number | null;
               fk_club_actual?: string | number | null;
+              pierna_habil?: unknown;
+              descripcion?: unknown;
+              altura_cm?: unknown;
             } | null;
+            about = valueOrPlaceholder(textValue(jugadorRow?.descripcion));
 
             const posicionNombre = await fetchNombreById(
               'posiciones',
@@ -320,12 +400,27 @@ export function ProfileScreen() {
                 value: valueOrPlaceholder(posicionNombre),
               },
               {
+                icon: 'flag',
+                label: 'Categoría',
+                value: valueOrPlaceholder(textValue(jugadorRow?.categoria)),
+              },
+              {
                 icon: 'calendar-alt',
                 label: 'Edad',
                 value: valueOrPlaceholder(age),
               },
-              { icon: 'arrows-alt-v', label: 'Altura', value: 'Sin datos' },
-              { icon: 'walking', label: 'Pierna hábil', value: 'Sin datos' },
+              {
+                icon: 'arrows-alt-v',
+                label: 'Altura',
+                value: valueOrPlaceholder(alturaDisplay(jugadorRow?.altura_cm)),
+              },
+              {
+                icon: 'walking',
+                label: 'Pierna hábil',
+                value: valueOrPlaceholder(
+                  piernaHabilToDisplay(jugadorRow?.pierna_habil),
+                ),
+              },
               {
                 icon: 'shield-alt',
                 label: 'Club actual',
@@ -337,29 +432,9 @@ export function ProfileScreen() {
                 value: 'Sin datos',
               },
             ];
-
-            const categoria = textValue(jugadorRow?.categoria);
-            if (categoria) {
-              const posicionIndex = fields.findIndex(
-                (field) => field.label === 'Posición',
-              );
-              const categoriaField: ProfileField = {
-                icon: 'flag',
-                label: 'Categoría',
-                value: categoria,
-              };
-              fields =
-                posicionIndex >= 0
-                  ? [
-                      ...fields.slice(0, posicionIndex + 1),
-                      categoriaField,
-                      ...fields.slice(posicionIndex + 1),
-                    ]
-                  : [...fields, categoriaField];
-            }
           }
 
-          if (cancelled) {
+          if (!isCurrent) {
             return;
           }
 
@@ -373,8 +448,7 @@ export function ProfileScreen() {
             about,
           });
         } catch (error) {
-          if (!cancelled) {
-            setOwnProfileData(emptyOwnProfile('player', currentProfile.photo));
+          if (isCurrent) {
             Alert.alert('No pudimos cargar tu perfil', errorMessage(error));
           }
         }
@@ -383,9 +457,9 @@ export function ProfileScreen() {
       void loadOwnProfile();
 
       return () => {
-        cancelled = true;
+        isCurrent = false;
       };
-    }, [currentProfile.photo, ownProfile]),
+    }, [currentProfile.photo, ownProfile, role]),
   );
 
   const displayedProfile = ownProfile ? ownProfileData : profile;
