@@ -27,6 +27,10 @@ const { width: windowWidth } = Dimensions.get('window');
 
 type ProfileRole = 'player' | 'agent' | null;
 
+function metadataString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function birthDateFromMetadata(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -133,12 +137,13 @@ export function CreateProfileScreen() {
       }
 
       const metadata = user.user_metadata ?? {};
+      const firstName = metadataString(metadata.first_name);
+      const lastName = metadataString(metadata.last_name);
       const usuarioRow = {
         id_usuario: user.id,
         fk_rol: roleId,
-        nombre:
-          name.trim() ||
-          (typeof metadata.full_name === 'string' ? metadata.full_name.trim() : ''),
+        nombre: firstName || name.trim(),
+        apellido: lastName,
         email: user.email ?? '',
         fecha_nacimiento: birthDateFromMetadata(metadata.birth_date),
       };
