@@ -102,6 +102,12 @@ export function CreateProfileScreen() {
       }
 
       const user = userData.user;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      console.log('user.id', user?.id);
+      console.log('user.email', user?.email);
+      console.log('getSession()', sessionData);
+      console.log('session?.user?.id', session?.user?.id);
       if (!user) {
         Alert.alert(
           'No se pudo crear el perfil',
@@ -171,17 +177,20 @@ export function CreateProfileScreen() {
           throw agenteError;
         }
       } else {
+        const jugadorRow = {
+          id_usuario: user.id,
+          fk_posicion: positionId,
+          fk_club_actual: clubId,
+          categoria: category.trim(),
+        };
+        console.log('perfiles_jugador payload', jugadorRow);
+        console.log('user.id', user.id);
+        console.log('id_usuario === user.id', jugadorRow.id_usuario === user.id);
+        console.log('perfiles_jugador onConflict', 'id_usuario');
+
         const { error: jugadorError } = await supabase
           .from('perfiles_jugador')
-          .upsert(
-            {
-              id_usuario: user.id,
-              fk_posicion: positionId,
-              fk_club_actual: clubId,
-              categoria: category.trim(),
-            },
-            { onConflict: 'id_usuario' },
-          );
+          .insert(jugadorRow);
 
         if (jugadorError) {
           throw jugadorError;

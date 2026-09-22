@@ -223,7 +223,6 @@ export function HomeScreen() {
         <View style={styles.body}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Accesos rápidos</Text>
-            <Text style={styles.seeAll}>Ver todos  ›</Text>
           </View>
 
           <View style={styles.quickRow}>

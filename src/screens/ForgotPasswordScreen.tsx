@@ -4,6 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
+  Alert,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +18,7 @@ import {
   View,
 } from 'react-native';
 
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 
@@ -30,10 +32,25 @@ export function ForgotPasswordScreen() {
   const panelRadius = Math.min(86, windowWidth * 0.22);
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
 
-  function sendLink() {
-    if (!email.trim()) {
+  async function sendLink() {
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      Alert.alert('Email requerido', 'Ingresá tu email para recuperar la contraseña.');
       return;
     }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
+
+    if (error) {
+      Alert.alert('Error de recuperación', error.message);
+      return;
+    }
+
+    Alert.alert(
+      'Revisá tu email',
+      'Te enviamos un correo para restablecer tu contraseña.',
+    );
     setSent(true);
   }
 
@@ -102,9 +119,6 @@ export function ForgotPasswordScreen() {
                     Te enviamos un enlace a {email.trim()} para que puedas
                     restablecer tu contraseña.
                   </Text>
-                  <Text style={styles.note}>
-                    En el prototipo no se envía ningún email real.
-                  </Text>
                 </View>
                 <Pressable
                   style={styles.button}
@@ -137,7 +151,12 @@ export function ForgotPasswordScreen() {
                   />
                 </View>
 
-                <Pressable style={styles.button} onPress={sendLink}>
+                <Pressable
+                  style={styles.button}
+                  onPress={() => {
+                    void sendLink();
+                  }}
+                >
                   <Text style={styles.buttonText}>Enviar enlace</Text>
                 </Pressable>
               </>

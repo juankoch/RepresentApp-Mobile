@@ -1,8 +1,15 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import {
+  RouteProp,
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useCallback, useState } from 'react';
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -16,10 +23,112 @@ import { PlayerTabBar } from '../components/PlayerTabBar';
 import { PremiumBadge } from '../components/PremiumBadge';
 import { ProfileContent } from '../components/ProfileContent';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
-import { OWN_PROFILE_ID } from '../data/playerProfiles';
+import { OWN_PROFILE_ID, ProfileField, UserProfile } from '../data/playerProfiles';
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+  return 'No pudimos cargar tu perfil.';
+}
+
+function textValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function formatBirthDateDisplay(value: unknown) {
+  const raw = textValue(value);
+  if (!raw) {
+    return undefined;
+  }
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (iso) {
+    return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  }
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    return raw;
+  }
+
+  return undefined;
+}
+
+function ageFromBirthDate(value: unknown) {
+  const raw = textValue(value);
+  if (!raw) {
+    return undefined;
+  }
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
+  const year = iso ? Number(iso[1]) : dmy ? Number(dmy[3]) : NaN;
+  const month = iso ? Number(iso[2]) : dmy ? Number(dmy[2]) : NaN;
+  const day = iso ? Number(iso[3]) : dmy ? Number(dmy[1]) : NaN;
+
+  if (!year || !month || !day) {
+    return undefined;
+  }
+
+  const birth = new Date(year, month - 1, day);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDelta = today.getMonth() - birth.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+  if (age < 0 || age > 120) {
+    return undefined;
+  }
+
+  return `${age} años`;
+}
+
+function withFieldValue(fields: ProfileField[], label: string, value?: string) {
+  if (!value) {
+    return fields;
+  }
+
+  return fields.map((field) =>
+    field.label === label ? { ...field, value } : field,
+  );
+}
+
+async function fetchNombreById(
+  table: 'posiciones' | 'clubes',
+  idField: 'id_posicion' | 'id_club',
+  id: string | number | null,
+) {
+  if (id == null) {
+    return undefined;
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .select('nombre')
+    .eq(idField, id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const nombre = textValue((data as { nombre?: unknown } | null)?.nombre);
+  return nombre || undefined;
+}
 
 export function ProfileScreen() {
   const navigation =
@@ -44,13 +153,179 @@ export function ProfileScreen() {
   const userId = route.params?.userId ?? OWN_PROFILE_ID;
   const ownProfile = isOwnProfile(userId);
   const profile = getProfile(userId);
-  const requested = profile ? hasSentRequest(profile.id) : false;
-  const connected = profile ? isConnected(profile.id) : false;
-  const incoming = profile ? incomingRequestIds.includes(profile.id) : false;
-  const blocked = profile ? isBlocked(profile.id) : false;
-  const rating = profile ? getRating(profile.id) : undefined;
+  const [liveOwnProfile, setLiveOwnProfile] = useState<UserProfile | null>(null);
 
-  if (!profile) {
+  useFocusEffect(
+    useCallback(() => {
+      if (!ownProfile || !profile) {
+        return;
+      }
+
+      let cancelled = false;
+
+      async function loadOwnProfile() {
+        try {
+          const { data: userData, error: userError } = await supabase.auth.getUser();
+          if (userError) {
+            throw userError;
+          }
+
+          const user = userData.user;
+          if (!user) {
+            return;
+          }
+
+          const { data: usuario, error: usuarioError } = await supabase
+            .from('usuarios')
+            .select('id_usuario, nombre, apellido, email, fecha_nacimiento, fk_rol')
+            .eq('id_usuario', user.id)
+            .maybeSingle();
+
+          if (usuarioError) {
+            throw usuarioError;
+          }
+          if (!usuario || cancelled) {
+            return;
+          }
+
+          const usuarioRow = usuario as {
+            nombre?: unknown;
+            apellido?: unknown;
+            email?: unknown;
+            fecha_nacimiento?: unknown;
+            fk_rol?: string | number | null;
+          };
+
+          let roleName = '';
+          if (usuarioRow.fk_rol != null) {
+            const { data: roleRow, error: roleError } = await supabase
+              .from('roles')
+              .select('nombre')
+              .eq('id_rol', usuarioRow.fk_rol)
+              .maybeSingle();
+
+            if (roleError) {
+              throw roleError;
+            }
+            roleName = textValue((roleRow as { nombre?: unknown } | null)?.nombre);
+          }
+
+          const isAgent = roleName === 'Representante';
+          const fullName = `${textValue(usuarioRow.nombre)} ${textValue(usuarioRow.apellido)}`.trim();
+          const email = textValue(usuarioRow.email);
+          const birthDate = formatBirthDateDisplay(usuarioRow.fecha_nacimiento);
+          const age = ageFromBirthDate(usuarioRow.fecha_nacimiento);
+
+          let fields = withFieldValue(profile.fields, 'Edad', age);
+          let about = profile.about;
+
+          if (isAgent) {
+            const { data: agente, error: agenteError } = await supabase
+              .from('perfiles_representante')
+              .select('descripcion')
+              .eq('id_usuario', user.id)
+              .maybeSingle();
+
+            if (agenteError) {
+              throw agenteError;
+            }
+
+            const descripcion = textValue(
+              (agente as { descripcion?: unknown } | null)?.descripcion,
+            );
+            if (descripcion) {
+              about = descripcion;
+            }
+          } else {
+            const { data: jugador, error: jugadorError } = await supabase
+              .from('perfiles_jugador')
+              .select('categoria, fk_posicion, fk_club_actual')
+              .eq('id_usuario', user.id)
+              .maybeSingle();
+
+            if (jugadorError) {
+              throw jugadorError;
+            }
+
+            const jugadorRow = jugador as {
+              categoria?: unknown;
+              fk_posicion?: string | number | null;
+              fk_club_actual?: string | number | null;
+            } | null;
+
+            const posicionNombre = await fetchNombreById(
+              'posiciones',
+              'id_posicion',
+              jugadorRow?.fk_posicion ?? null,
+            );
+            const clubNombre = await fetchNombreById(
+              'clubes',
+              'id_club',
+              jugadorRow?.fk_club_actual ?? null,
+            );
+
+            fields = withFieldValue(fields, 'Posición', posicionNombre);
+            fields = withFieldValue(fields, 'Club actual', clubNombre);
+
+            const categoria = textValue(jugadorRow?.categoria);
+            if (categoria && !fields.some((field) => field.label === 'Categoría')) {
+              const posicionIndex = fields.findIndex((field) => field.label === 'Posición');
+              const categoriaField: ProfileField = {
+                icon: 'flag',
+                label: 'Categoría',
+                value: categoria,
+              };
+              fields =
+                posicionIndex >= 0
+                  ? [
+                      ...fields.slice(0, posicionIndex + 1),
+                      categoriaField,
+                      ...fields.slice(posicionIndex + 1),
+                    ]
+                  : [...fields, categoriaField];
+            } else {
+              fields = withFieldValue(fields, 'Categoría', categoria);
+            }
+          }
+
+          if (cancelled) {
+            return;
+          }
+
+          setLiveOwnProfile({
+            ...profile,
+            kind: isAgent ? 'agent' : roleName === 'Jugador' ? 'player' : profile.kind,
+            name: fullName || profile.name,
+            email: email || profile.email,
+            birthDate: birthDate ?? profile.birthDate,
+            fields,
+            about,
+          });
+        } catch (error) {
+          if (!cancelled) {
+            Alert.alert('No pudimos cargar tu perfil', errorMessage(error));
+          }
+        }
+      }
+
+      void loadOwnProfile();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [ownProfile, profile]),
+  );
+
+  const displayedProfile = ownProfile ? liveOwnProfile ?? profile : profile;
+  const requested = displayedProfile ? hasSentRequest(displayedProfile.id) : false;
+  const connected = displayedProfile ? isConnected(displayedProfile.id) : false;
+  const incoming = displayedProfile
+    ? incomingRequestIds.includes(displayedProfile.id)
+    : false;
+  const blocked = displayedProfile ? isBlocked(displayedProfile.id) : false;
+  const rating = displayedProfile ? getRating(displayedProfile.id) : undefined;
+
+  if (!displayedProfile) {
     return (
       <View style={[styles.root, { backgroundColor: brand.header }]}>
         <StatusBar style="light" />
@@ -103,7 +378,7 @@ export function ProfileScreen() {
           <Pressable
             style={styles.headerSide}
             onPress={() =>
-              navigation.push('UserOptions', { userId: profile.id })
+              navigation.push('UserOptions', { userId: displayedProfile.id })
             }
           >
             <FontAwesome5 name="ellipsis-v" size={16} color="#FFFFFF" />
@@ -117,7 +392,7 @@ export function ProfileScreen() {
           contentContainerStyle={styles.scrollContent}
         >
           <ProfileContent
-            profile={profile}
+            profile={displayedProfile}
             photoBadge={
               ownProfile ? (
                 <View style={styles.photoBadge}>
@@ -165,7 +440,7 @@ export function ProfileScreen() {
                   </Text>
                   <Pressable
                     style={styles.unblockButton}
-                    onPress={() => unblockUser(profile.id)}
+                    onPress={() => unblockUser(displayedProfile.id)}
                   >
                     <Text style={styles.unblockButtonText}>Desbloquear</Text>
                   </Pressable>
@@ -197,7 +472,7 @@ export function ProfileScreen() {
                   ) : incoming ? (
                     <Pressable
                       style={[styles.requestButton, { backgroundColor: brand.header }]}
-                      onPress={() => acceptIncomingRequest(profile.id)}
+                      onPress={() => acceptIncomingRequest(displayedProfile.id)}
                     >
                       <FontAwesome5 name="check" size={14} color="#FFFFFF" />
                       <Text style={styles.requestButtonText}>Aceptar solicitud</Text>
@@ -210,7 +485,7 @@ export function ProfileScreen() {
                   ) : (
                     <Pressable
                       style={[styles.requestButton, { backgroundColor: brand.header }]}
-                      onPress={() => sendRequest(profile.id)}
+                      onPress={() => sendRequest(displayedProfile.id)}
                     >
                       <FontAwesome5 name="user-plus" size={14} color="#FFFFFF" />
                       <Text style={styles.requestButtonText}>
@@ -221,9 +496,9 @@ export function ProfileScreen() {
                   <Pressable
                     style={[styles.messageButton, { backgroundColor: brand.header }]}
                     onPress={() => {
-                      if (profile.conversationId) {
+                      if (displayedProfile.conversationId) {
                         navigation.navigate('Chat', {
-                          conversationId: profile.conversationId,
+                          conversationId: displayedProfile.conversationId,
                         });
                       }
                     }}

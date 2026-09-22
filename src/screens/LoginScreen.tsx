@@ -45,6 +45,31 @@ export function LoginScreen() {
       return;
     }
 
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      Alert.alert(
+        'No pudimos verificar tu perfil',
+        userError?.message ?? 'No hay un usuario autenticado.',
+      );
+      return;
+    }
+
+    const { data: usuario, error: usuarioError } = await supabase
+      .from('usuarios')
+      .select('id_usuario')
+      .eq('id_usuario', userData.user.id)
+      .maybeSingle();
+
+    if (usuarioError) {
+      Alert.alert('No pudimos verificar tu perfil', usuarioError.message);
+      return;
+    }
+
+    if (usuario) {
+      navigation.navigate('Home');
+      return;
+    }
+
     navigation.navigate('CreateProfile');
   }
 
