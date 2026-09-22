@@ -2,7 +2,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,8 +18,13 @@ import {
 } from 'react-native';
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
-import { usePlayerProfile } from '../context/PlayerProfileContext';
+import {
+  fetchCreatedProfileKind,
+  usePlayerProfile,
+} from '../context/PlayerProfileContext';
 import { OWN_PROFILE_ID } from '../data/playerProfiles';
+import { findOrCreateClubId } from '../lib/clubes';
+import { piernaHabilToDb, piernaHabilToDisplay } from '../lib/piernaHabil';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -43,6 +48,54 @@ function errorMessage(error: unknown) {
 
 function textValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function experienceFromDb(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value.replace(/[^\d-]/g, ''), 10);
+    return Number.isFinite(parsed) ? String(parsed) : '';
+  }
+  return '';
+}
+
+function experienceToDb(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const match = trimmed.match(/-?\d+/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseInt(match[0], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function alturaFromDb(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value.replace(/[^\d-]/g, ''), 10);
+    return Number.isFinite(parsed) ? String(parsed) : '';
+  }
+  return '';
+}
+
+function alturaToDb(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const match = trimmed.match(/\d+/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseInt(match[0], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function formatBirthDateDisplay(value: unknown) {
@@ -180,10 +233,10 @@ export function EditProfileScreen() {
   const [location, setLocation] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [position, setPosition] = useState('');
-  const [age, setAge] = useState('');
   const [height, setHeight] = useState('');
   const [foot, setFoot] = useState('');
   const [club, setClub] = useState('');
+  const [category, setCategory] = useState('');
   const [agent, setAgent] = useState('');
   const [agency, setAgency] = useState('');
   const [experience, setExperience] = useState('');
@@ -192,10 +245,83 @@ export function EditProfileScreen() {
   const [represented, setRepresented] = useState('');
   const [focus, setFocus] = useState('');
   const [about, setAbout] = useState('');
+  const agencyRef = useRef('');
+  const aboutRef = useRef('');
+  const experienceRef = useRef('');
+  const specialtyRef = useRef('');
+  const zoneRef = useRef('');
+  const focusRef = useRef('');
+  const positionRef = useRef('');
+  const categoryRef = useRef('');
+  const heightRef = useRef('');
+  const footRef = useRef('');
+  const clubRef = useRef('');
+  const agencyDirtyRef = useRef(false);
+  const aboutDirtyRef = useRef(false);
+  const experienceDirtyRef = useRef(false);
+  const specialtyDirtyRef = useRef(false);
+  const zoneDirtyRef = useRef(false);
+  const focusDirtyRef = useRef(false);
+  const positionDirtyRef = useRef(false);
+  const categoryDirtyRef = useRef(false);
+  const heightDirtyRef = useRef(false);
+  const footDirtyRef = useRef(false);
+  const clubDirtyRef = useRef(false);
+
+  function bindDirtyField(
+    setter: (value: string) => void,
+    valueRef: { current: string },
+    dirtyRef: { current: boolean },
+  ) {
+    return (value: string) => {
+      dirtyRef.current = true;
+      valueRef.current = value;
+      setter(value);
+    };
+  }
+
+  const handleAgencyChange = bindDirtyField(setAgency, agencyRef, agencyDirtyRef);
+  const handleAboutChange = bindDirtyField(setAbout, aboutRef, aboutDirtyRef);
+  const handleExperienceChange = bindDirtyField(
+    setExperience,
+    experienceRef,
+    experienceDirtyRef,
+  );
+  const handleSpecialtyChange = bindDirtyField(
+    setSpecialty,
+    specialtyRef,
+    specialtyDirtyRef,
+  );
+  const handleZoneChange = bindDirtyField(setZone, zoneRef, zoneDirtyRef);
+  const handleFocusChange = bindDirtyField(setFocus, focusRef, focusDirtyRef);
+  const handlePositionChange = bindDirtyField(
+    setPosition,
+    positionRef,
+    positionDirtyRef,
+  );
+  const handleCategoryChange = bindDirtyField(
+    setCategory,
+    categoryRef,
+    categoryDirtyRef,
+  );
+  const handleHeightChange = bindDirtyField(setHeight, heightRef, heightDirtyRef);
+  const handleFootChange = bindDirtyField(setFoot, footRef, footDirtyRef);
+  const handleClubChange = bindDirtyField(setClub, clubRef, clubDirtyRef);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
+      agencyDirtyRef.current = false;
+      aboutDirtyRef.current = false;
+      experienceDirtyRef.current = false;
+      specialtyDirtyRef.current = false;
+      zoneDirtyRef.current = false;
+      focusDirtyRef.current = false;
+      positionDirtyRef.current = false;
+      categoryDirtyRef.current = false;
+      heightDirtyRef.current = false;
+      footDirtyRef.current = false;
+      clubDirtyRef.current = false;
 
       async function loadProfile() {
         try {
@@ -209,9 +335,14 @@ export function EditProfileScreen() {
             return;
           }
 
+          const { kind, error: kindError } = await fetchCreatedProfileKind(user.id);
+          if (kindError) {
+            throw kindError;
+          }
+
           const { data: usuario, error: usuarioError } = await supabase
             .from('usuarios')
-            .select('id_usuario, nombre, apellido, email, fecha_nacimiento, fk_rol')
+            .select('id_usuario, nombre, apellido, email, fecha_nacimiento')
             .eq('id_usuario', user.id)
             .maybeSingle();
 
@@ -227,24 +358,9 @@ export function EditProfileScreen() {
             apellido?: unknown;
             email?: unknown;
             fecha_nacimiento?: unknown;
-            fk_rol?: string | number | null;
           };
 
-          let roleName = '';
-          if (usuarioRow.fk_rol != null) {
-            const { data: roleRow, error: roleError } = await supabase
-              .from('roles')
-              .select('nombre')
-              .eq('id_rol', usuarioRow.fk_rol)
-              .maybeSingle();
-
-            if (roleError) {
-              throw roleError;
-            }
-            roleName = textValue((roleRow as { nombre?: unknown } | null)?.nombre);
-          }
-
-          const agentRole = roleName === 'Representante';
+          const agentRole = kind === 'agent';
           const loadedLastName = textValue(usuarioRow.apellido);
           const fullName = `${textValue(usuarioRow.nombre)} ${loadedLastName}`.trim();
 
@@ -252,12 +368,20 @@ export function EditProfileScreen() {
           let loadedPosition = '';
           let loadedClub = '';
           let loadedFoot = '';
+          let loadedCategory = '';
+          let loadedHeight = '';
           let loadedAgency = '';
+          let loadedExperience = '';
+          let loadedSpecialty = '';
+          let loadedZone = '';
+          let loadedFocus = '';
 
           if (agentRole) {
             const { data: agente, error: agenteError } = await supabase
               .from('perfiles_representante')
-              .select('descripcion, empresa')
+              .select(
+                'descripcion, empresa, anios_experiencia, especialidad, zona, enfoque',
+              )
               .eq('id_usuario', user.id)
               .maybeSingle();
 
@@ -265,16 +389,26 @@ export function EditProfileScreen() {
               throw agenteError;
             }
 
-            loadedAbout = textValue(
-              (agente as { descripcion?: unknown } | null)?.descripcion,
-            );
-            loadedAgency = textValue(
-              (agente as { empresa?: unknown } | null)?.empresa,
-            );
-          } else {
+            const agenteRow = agente as {
+              descripcion?: unknown;
+              empresa?: unknown;
+              anios_experiencia?: unknown;
+              especialidad?: unknown;
+              zona?: unknown;
+              enfoque?: unknown;
+            } | null;
+            loadedAbout = textValue(agenteRow?.descripcion);
+            loadedAgency = textValue(agenteRow?.empresa);
+            loadedExperience = experienceFromDb(agenteRow?.anios_experiencia);
+            loadedSpecialty = textValue(agenteRow?.especialidad);
+            loadedZone = textValue(agenteRow?.zona);
+            loadedFocus = textValue(agenteRow?.enfoque);
+          } else if (kind === 'player') {
             const { data: jugador, error: jugadorError } = await supabase
               .from('perfiles_jugador')
-              .select('fk_posicion, fk_club_actual, pierna_habil, descripcion')
+              .select(
+                'fk_posicion, fk_club_actual, pierna_habil, descripcion, categoria, altura_cm',
+              )
               .eq('id_usuario', user.id)
               .maybeSingle();
 
@@ -287,6 +421,8 @@ export function EditProfileScreen() {
               fk_club_actual?: string | number | null;
               pierna_habil?: unknown;
               descripcion?: unknown;
+              categoria?: unknown;
+              altura_cm?: unknown;
             } | null;
 
             loadedPosition = await fetchNombreById(
@@ -299,8 +435,10 @@ export function EditProfileScreen() {
               'id_club',
               jugadorRow?.fk_club_actual ?? null,
             );
-            loadedFoot = textValue(jugadorRow?.pierna_habil);
+            loadedFoot = piernaHabilToDisplay(jugadorRow?.pierna_habil);
             loadedAbout = textValue(jugadorRow?.descripcion);
+            loadedCategory = textValue(jugadorRow?.categoria);
+            loadedHeight = alturaFromDb(jugadorRow?.altura_cm);
           }
 
           if (cancelled) {
@@ -312,12 +450,50 @@ export function EditProfileScreen() {
           setName(fullName);
           setEmail(textValue(usuarioRow.email));
           setBirthDate(formatBirthDateDisplay(usuarioRow.fecha_nacimiento));
-          setAge(ageFromBirthDate(usuarioRow.fecha_nacimiento));
-          setPosition(loadedPosition);
-          setClub(loadedClub);
-          setFoot(loadedFoot);
-          setAgency(loadedAgency);
-          setAbout(loadedAbout);
+          if (!positionDirtyRef.current) {
+            positionRef.current = loadedPosition;
+            setPosition(loadedPosition);
+          }
+          if (!clubDirtyRef.current) {
+            clubRef.current = loadedClub;
+            setClub(loadedClub);
+          }
+          if (!footDirtyRef.current) {
+            footRef.current = loadedFoot;
+            setFoot(loadedFoot);
+          }
+          if (!categoryDirtyRef.current) {
+            categoryRef.current = loadedCategory;
+            setCategory(loadedCategory);
+          }
+          if (!heightDirtyRef.current) {
+            heightRef.current = loadedHeight;
+            setHeight(loadedHeight);
+          }
+          if (!agencyDirtyRef.current) {
+            agencyRef.current = loadedAgency;
+            setAgency(loadedAgency);
+          }
+          if (!aboutDirtyRef.current) {
+            aboutRef.current = loadedAbout;
+            setAbout(loadedAbout);
+          }
+          if (!experienceDirtyRef.current) {
+            experienceRef.current = loadedExperience;
+            setExperience(loadedExperience);
+          }
+          if (!specialtyDirtyRef.current) {
+            specialtyRef.current = loadedSpecialty;
+            setSpecialty(loadedSpecialty);
+          }
+          if (!zoneDirtyRef.current) {
+            zoneRef.current = loadedZone;
+            setZone(loadedZone);
+          }
+          if (!focusDirtyRef.current) {
+            focusRef.current = loadedFocus;
+            setFocus(loadedFocus);
+          }
         } catch (error) {
           if (!cancelled) {
             Alert.alert('No pudimos cargar tu perfil', errorMessage(error));
@@ -378,67 +554,135 @@ export function EditProfileScreen() {
       }
 
       if (isAgent) {
-        const { error: agenteError } = await supabase
+        const { data: updatedAgent, error: agenteError } = await supabase
           .from('perfiles_representante')
           .update({
-            descripcion: about.trim(),
-            empresa: agency.trim(),
+            descripcion: aboutRef.current.trim(),
+            empresa: agencyRef.current.trim(),
+            anios_experiencia: experienceToDb(experienceRef.current),
+            especialidad: specialtyRef.current.trim(),
+            zona: zoneRef.current.trim(),
+            enfoque: focusRef.current.trim(),
           })
-          .eq('id_usuario', user.id);
+          .eq('id_usuario', user.id)
+          .select('id_usuario')
+          .maybeSingle();
 
         if (agenteError) {
           throw agenteError;
         }
+        if (!updatedAgent) {
+          Alert.alert(
+            'No se pudo guardar',
+            'No encontramos tu perfil de representante para actualizar.',
+          );
+          return;
+        }
       } else {
+        const trimmedPosition = positionRef.current.trim();
         let positionId: string | number | null = null;
-        let clubId: string | number | null = null;
-
-        if (position.trim()) {
+        if (trimmedPosition) {
           positionId = await findIdByName(
             'posiciones',
             'id_posicion',
-            position.trim(),
+            trimmedPosition,
           );
-        }
-        if (club.trim()) {
-          clubId = await findIdByName('clubes', 'id_club', club.trim());
+          if (positionId == null) {
+            Alert.alert(
+              'No se pudo guardar',
+              'La posición no es válida. Escribí una posición existente.',
+            );
+            return;
+          }
         }
 
-        const { error: jugadorError } = await supabase
+        const trimmedClub = clubRef.current.trim();
+        const clubId = trimmedClub ? await findOrCreateClubId(trimmedClub) : null;
+
+        const trimmedFoot = footRef.current.trim();
+        const piernaHabil = trimmedFoot ? piernaHabilToDb(trimmedFoot) : null;
+        if (trimmedFoot && !piernaHabil) {
+          Alert.alert(
+            'No se pudo guardar',
+            'La pierna hábil debe ser Derecha, Izquierda o Ambidiestra.',
+          );
+          return;
+        }
+
+        const trimmedHeight = heightRef.current.trim();
+        const alturaCm = alturaToDb(trimmedHeight);
+        if (trimmedHeight && alturaCm == null) {
+          Alert.alert(
+            'No se pudo guardar',
+            'La altura debe ser un número en centímetros, por ejemplo 183.',
+          );
+          return;
+        }
+
+        const { data: updatedPlayer, error: jugadorError } = await supabase
           .from('perfiles_jugador')
           .update({
             fk_posicion: positionId,
             fk_club_actual: clubId,
-            pierna_habil: foot.trim() || null,
-            descripcion: about.trim(),
+            pierna_habil: piernaHabil,
+            descripcion: aboutRef.current.trim(),
+            categoria: categoryRef.current.trim() || null,
+            altura_cm: alturaCm,
           })
-          .eq('id_usuario', user.id);
+          .eq('id_usuario', user.id)
+          .select('id_usuario')
+          .maybeSingle();
 
         if (jugadorError) {
           throw jugadorError;
         }
+        if (!updatedPlayer) {
+          Alert.alert(
+            'No se pudo guardar',
+            'No encontramos tu perfil de jugador para actualizar.',
+          );
+          return;
+        }
       }
 
       updateProfile({
-        name: name.trim() || currentProfile.name,
+        name: name.trim(),
         email: email.trim(),
         birthDate: birthDate.trim(),
-        about: about.trim(),
+        about: aboutRef.current.trim(),
+        kind: isAgent ? 'agent' : 'player',
         fields: isAgent
           ? [
-              { icon: 'building', label: 'Agencia', value: agency.trim() },
-              { icon: 'briefcase', label: 'Experiencia', value: experience.trim() },
-              { icon: 'star', label: 'Especialidad', value: specialty.trim() },
-              { icon: 'map-marker-alt', label: 'Zona', value: zone.trim() },
+              { icon: 'building', label: 'Agencia', value: agencyRef.current.trim() },
+              {
+                icon: 'briefcase',
+                label: 'Experiencia',
+                value: experienceRef.current.trim(),
+              },
+              {
+                icon: 'star',
+                label: 'Especialidad',
+                value: specialtyRef.current.trim(),
+              },
+              { icon: 'map-marker-alt', label: 'Zona', value: zoneRef.current.trim() },
               { icon: 'users', label: 'Representados', value: represented.trim() },
-              { icon: 'user-friends', label: 'Enfoque', value: focus.trim() },
+              {
+                icon: 'user-friends',
+                label: 'Enfoque',
+                value: focusRef.current.trim(),
+              },
             ]
           : [
-              { icon: 'futbol', label: 'Posición', value: position.trim() },
-              { icon: 'calendar-alt', label: 'Edad', value: age.trim() },
-              { icon: 'arrows-alt-v', label: 'Altura', value: height.trim() },
-              { icon: 'walking', label: 'Pierna hábil', value: foot.trim() },
-              { icon: 'shield-alt', label: 'Club actual', value: club.trim() },
+              { icon: 'futbol', label: 'Posición', value: positionRef.current.trim() },
+              {
+                icon: 'flag',
+                label: 'Categoría',
+                value: categoryRef.current.trim(),
+              },
+              { icon: 'calendar-alt', label: 'Edad', value: ageFromBirthDate(birthDate) },
+              { icon: 'arrows-alt-v', label: 'Altura', value: heightRef.current.trim() },
+              { icon: 'walking', label: 'Pierna hábil', value: footRef.current.trim() },
+              { icon: 'shield-alt', label: 'Club actual', value: clubRef.current.trim() },
               { icon: 'user-tie', label: 'Representante', value: agent.trim() },
             ],
       });
@@ -516,21 +760,21 @@ export function EditProfileScreen() {
           {isAgent ? (
             <>
               <Text style={styles.label}>Agencia</Text>
-              <TextInput style={styles.input} value={agency} onChangeText={setAgency} />
+              <TextInput style={styles.input} value={agency} onChangeText={handleAgencyChange} />
               <Text style={styles.label}>Experiencia</Text>
               <TextInput
                 style={styles.input}
                 value={experience}
-                onChangeText={setExperience}
+                onChangeText={handleExperienceChange}
               />
               <Text style={styles.label}>Especialidad</Text>
               <TextInput
                 style={styles.input}
                 value={specialty}
-                onChangeText={setSpecialty}
+                onChangeText={handleSpecialtyChange}
               />
               <Text style={styles.label}>Zona</Text>
-              <TextInput style={styles.input} value={zone} onChangeText={setZone} />
+              <TextInput style={styles.input} value={zone} onChangeText={handleZoneChange} />
               <Text style={styles.label}>Representados</Text>
               <TextInput
                 style={styles.input}
@@ -538,7 +782,7 @@ export function EditProfileScreen() {
                 onChangeText={setRepresented}
               />
               <Text style={styles.label}>Enfoque</Text>
-              <TextInput style={styles.input} value={focus} onChangeText={setFocus} />
+              <TextInput style={styles.input} value={focus} onChangeText={handleFocusChange} />
             </>
           ) : (
             <>
@@ -546,20 +790,38 @@ export function EditProfileScreen() {
               <TextInput
                 style={styles.input}
                 value={position}
-                onChangeText={setPosition}
+                onChangeText={handlePositionChange}
+              />
+              <Text style={styles.label}>Categoría</Text>
+              <TextInput
+                style={styles.input}
+                value={category}
+                onChangeText={handleCategoryChange}
               />
               <Text style={styles.label}>Edad</Text>
-              <TextInput style={styles.input} value={age} onChangeText={setAge} />
+              <TextInput
+                style={styles.input}
+                value={ageFromBirthDate(birthDate)}
+                editable={false}
+              />
               <Text style={styles.label}>Altura</Text>
               <TextInput
                 style={styles.input}
                 value={height}
-                onChangeText={setHeight}
+                onChangeText={handleHeightChange}
               />
               <Text style={styles.label}>Pierna hábil</Text>
-              <TextInput style={styles.input} value={foot} onChangeText={setFoot} />
+              <TextInput
+                style={styles.input}
+                value={foot}
+                onChangeText={handleFootChange}
+              />
               <Text style={styles.label}>Club actual</Text>
-              <TextInput style={styles.input} value={club} onChangeText={setClub} />
+              <TextInput
+                style={styles.input}
+                value={club}
+                onChangeText={handleClubChange}
+              />
               <Text style={styles.label}>Representante</Text>
               <TextInput style={styles.input} value={agent} onChangeText={setAgent} />
             </>
@@ -569,7 +831,7 @@ export function EditProfileScreen() {
           <TextInput
             style={[styles.input, styles.multiline]}
             value={about}
-            onChangeText={setAbout}
+            onChangeText={handleAboutChange}
             multiline
           />
 
