@@ -38,6 +38,7 @@ export function RegisterScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [name, setName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
@@ -59,12 +60,16 @@ export function RegisterScreen() {
   }
 
   async function handleRegister() {
+    const firstName = name.trim();
+    const lastNameValue = lastName.trim();
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
         data: {
-          full_name: name.trim(),
+          first_name: firstName,
+          last_name: lastNameValue,
+          full_name: `${firstName} ${lastNameValue}`.trim(),
           birth_date: birthDate ? formatBirthDate(birthDate) : '',
         },
       },
@@ -152,6 +157,19 @@ export function RegisterScreen() {
                 autoCorrect={false}
                 value={name}
                 onChangeText={setName}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>APELLIDO</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Gonzales"
+                placeholderTextColor={colors.inputText}
+                autoCapitalize="words"
+                autoCorrect={false}
+                value={lastName}
+                onChangeText={setLastName}
               />
             </View>
 
