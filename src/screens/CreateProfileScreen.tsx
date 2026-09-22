@@ -4,6 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
+  Alert,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -17,13 +18,60 @@ import {
   View,
 } from 'react-native';
 
+import { usePlayerProfile } from '../context/PlayerProfileContext';
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
-import { usePlayerProfile } from '../context/PlayerProfileContext';
 
 const { width: windowWidth } = Dimensions.get('window');
 
 type ProfileRole = 'player' | 'agent' | null;
+
+function birthDateFromMetadata(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (dmy) {
+    return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    return trimmed.slice(0, 10);
+  }
+
+  return null;
+}
+
+async function findIdByName(
+  table: 'roles' | 'posiciones' | 'clubes',
+  idField: 'id_rol' | 'id_posicion' | 'id_club',
+  nombre: string,
+) {
+  const { data, error } = await supabase
+    .from(table)
+    .select(idField)
+    .ilike('nombre', nombre)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const id = (data as Record<string, string | number>)[idField];
+  return id ?? null;
+}
 
 export function CreateProfileScreen() {
   const navigation =
@@ -38,8 +86,114 @@ export function CreateProfileScreen() {
   const [description, setDescription] = useState('');
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
 
-  function createProfile() {
+  async function createProfile() {
     if (!role) {
+      return;
+    }
+
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        throw userError;
+      }
+
+      const user = userData.user;
+      if (!user) {
+        Alert.alert(
+          'No se pudo crear el perfil',
+          'No hay un usuario autenticado. Iniciá sesión e intentá de nuevo.',
+        );
+        return;
+      }
+
+      const roleName = role === 'agent' ? 'Representante' : 'Jugador';
+      const roleId = await findIdByName('roles', 'id_rol', roleName);
+      if (roleId == null) {
+        Alert.alert(
+          'No se pudo crear el perfil',
+          `No se encontró el rol "${roleName}" en Supabase.`,
+        );
+        return;
+      }
+
+      let positionId: string | number | null = null;
+      let clubId: string | number | null = null;
+
+      if (role === 'player') {
+        if (position.trim()) {
+          positionId = await findIdByName(
+            'posiciones',
+            'id_posicion',
+            position.trim(),
+          );
+        }
+        if (club.trim()) {
+          clubId = await findIdByName('clubes', 'id_club', club.trim());
+        }
+      }
+
+      const metadata = user.user_metadata ?? {};
+      const usuarioRow = {
+        id_usuario: user.id,
+        fk_rol: roleId,
+        nombre:
+          name.trim() ||
+          (typeof metadata.full_name === 'string' ? metadata.full_name.trim() : ''),
+        email: user.email ?? '',
+        fecha_nacimiento: birthDateFromMetadata(metadata.birth_date),
+      };
+
+      const { error: usuarioError } = await supabase
+        .from('usuarios')
+        .upsert(usuarioRow, { onConflict: 'id_usuario' });
+
+      if (usuarioError) {
+        throw usuarioError;
+      }
+
+      if (role === 'agent') {
+        const { error: agenteError } = await supabase
+          .from('perfiles_representante')
+          .upsert(
+            {
+              id_usuario: user.id,
+              descripcion: description.trim(),
+            },
+            { onConflict: 'id_usuario' },
+          );
+
+        if (agenteError) {
+          throw agenteError;
+        }
+      } else {
+        const { error: jugadorError } = await supabase
+          .from('perfiles_jugador')
+          .upsert(
+            {
+              id_usuario: user.id,
+              fk_posicion: positionId,
+              fk_club_actual: clubId,
+              categoria: category.trim(),
+            },
+            { onConflict: 'id_usuario' },
+          );
+
+        if (jugadorError) {
+          throw jugadorError;
+        }
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' &&
+              error !== null &&
+              'message' in error &&
+              typeof error.message === 'string' &&
+              error.message.trim()
+            ? error.message
+            : 'Ocurrió un error inesperado.';
+      Alert.alert('No se pudo crear el perfil', message);
       return;
     }
 
@@ -225,7 +379,9 @@ export function CreateProfileScreen() {
 
             <Pressable
               style={[styles.button, !role && styles.buttonDisabled]}
-              onPress={createProfile}
+              onPress={() => {
+                void createProfile();
+              }}
             >
               <Text style={styles.buttonText}>Crear</Text>
             </Pressable>
