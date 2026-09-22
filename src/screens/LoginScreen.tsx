@@ -19,6 +19,12 @@ import {
 } from 'react-native';
 
 import { RaLogo } from '../components/RaLogo';
+import { usePlayerMessages } from '../context/PlayerMessagesContext';
+import {
+  fetchCreatedProfileKind,
+  usePlayerProfile,
+} from '../context/PlayerProfileContext';
+import { usePlayerTrials } from '../context/PlayerTrialsContext';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -28,6 +34,9 @@ const { width: windowWidth } = Dimensions.get('window');
 export function LoginScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const { startSession, resetSession } = usePlayerProfile();
+  const { resetSession: resetTrials } = usePlayerTrials();
+  const { resetSession: resetMessages } = usePlayerMessages();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const logoSize = Math.min(92, Math.max(72, windowWidth * 0.22));
@@ -54,10 +63,27 @@ export function LoginScreen() {
       return;
     }
 
+    const userId = userData.user.id;
+    const { kind, error: profileKindError } = await fetchCreatedProfileKind(userId);
+
+    if (profileKindError) {
+      Alert.alert('No pudimos verificar tu perfil', profileKindError.message);
+      return;
+    }
+
+    resetSession();
+    resetTrials();
+    resetMessages();
+
+    if (!kind) {
+      navigation.navigate('CreateProfile');
+      return;
+    }
+
     const { data: usuario, error: usuarioError } = await supabase
       .from('usuarios')
-      .select('id_usuario')
-      .eq('id_usuario', userData.user.id)
+      .select('nombre, apellido, email')
+      .eq('id_usuario', userId)
       .maybeSingle();
 
     if (usuarioError) {
@@ -65,12 +91,22 @@ export function LoginScreen() {
       return;
     }
 
-    if (usuario) {
-      navigation.navigate('Home');
-      return;
-    }
+    const usuarioRow = usuario as {
+      nombre?: unknown;
+      apellido?: unknown;
+      email?: unknown;
+    } | null;
+    const fullName = `${typeof usuarioRow?.nombre === 'string' ? usuarioRow.nombre.trim() : ''} ${
+      typeof usuarioRow?.apellido === 'string' ? usuarioRow.apellido.trim() : ''
+    }`.trim();
+    const usuarioEmail =
+      typeof usuarioRow?.email === 'string' ? usuarioRow.email.trim() : '';
 
-    navigation.navigate('CreateProfile');
+    startSession(kind, {
+      name: fullName,
+      email: usuarioEmail || userData.user.email || '',
+    });
+    navigation.navigate('Home');
   }
 
   return (

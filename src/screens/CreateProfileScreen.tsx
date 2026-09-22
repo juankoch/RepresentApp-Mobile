@@ -102,12 +102,6 @@ export function CreateProfileScreen() {
       }
 
       const user = userData.user;
-      const { data: sessionData } = await supabase.auth.getSession();
-      const session = sessionData.session;
-      console.log('user.id', user?.id);
-      console.log('user.email', user?.email);
-      console.log('getSession()', sessionData);
-      console.log('session?.user?.id', session?.user?.id);
       if (!user) {
         Alert.alert(
           'No se pudo crear el perfil',
@@ -183,14 +177,10 @@ export function CreateProfileScreen() {
           fk_club_actual: clubId,
           categoria: category.trim(),
         };
-        console.log('perfiles_jugador payload', jugadorRow);
-        console.log('user.id', user.id);
-        console.log('id_usuario === user.id', jugadorRow.id_usuario === user.id);
-        console.log('perfiles_jugador onConflict', 'id_usuario');
 
         const { error: jugadorError } = await supabase
           .from('perfiles_jugador')
-          .insert(jugadorRow);
+          .upsert(jugadorRow, { onConflict: 'id_usuario' });
 
         if (jugadorError) {
           throw jugadorError;
@@ -223,7 +213,7 @@ export function CreateProfileScreen() {
           {
             icon: 'futbol',
             label: 'Posición',
-            value: position.trim() || 'Delantero',
+            value: position.trim(),
           },
           {
             icon: 'calendar-alt',
@@ -232,19 +222,19 @@ export function CreateProfileScreen() {
               ? age.trim().includes('año')
                 ? age.trim()
                 : `${age.trim()} años`
-              : '21 años',
+              : '',
           },
-          { icon: 'arrows-alt-v', label: 'Altura', value: '1,83 m' },
-          { icon: 'walking', label: 'Pierna hábil', value: 'Derecha' },
+          { icon: 'arrows-alt-v', label: 'Altura', value: '' },
+          { icon: 'walking', label: 'Pierna hábil', value: '' },
           {
             icon: 'shield-alt',
             label: 'Club actual',
-            value: club.trim() || 'Racing Club',
+            value: club.trim(),
           },
           {
             icon: 'user-tie',
             label: 'Representante',
-            value: 'Sin representante',
+            value: '',
           },
         ],
       });

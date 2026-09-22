@@ -97,14 +97,54 @@ function ageFromBirthDate(value: unknown) {
   return `${age} años`;
 }
 
-function withFieldValue(fields: ProfileField[], label: string, value?: string) {
-  if (!value) {
-    return fields;
+function valueOrPlaceholder(value?: string) {
+  return value && value.trim() ? value.trim() : 'Sin datos';
+}
+
+function emptyOwnFields(kind: 'player' | 'agent'): ProfileField[] {
+  if (kind === 'agent') {
+    return [
+      { icon: 'building', label: 'Agencia', value: 'Sin datos' },
+      { icon: 'briefcase', label: 'Experiencia', value: 'Sin datos' },
+      { icon: 'star', label: 'Especialidad', value: 'Sin datos' },
+      { icon: 'map-marker-alt', label: 'Zona', value: 'Sin datos' },
+      { icon: 'users', label: 'Representados', value: 'Sin datos' },
+      { icon: 'user-friends', label: 'Enfoque', value: 'Sin datos' },
+    ];
   }
 
-  return fields.map((field) =>
-    field.label === label ? { ...field, value } : field,
-  );
+  return [
+    { icon: 'futbol', label: 'Posición', value: 'Sin datos' },
+    { icon: 'calendar-alt', label: 'Edad', value: 'Sin datos' },
+    { icon: 'arrows-alt-v', label: 'Altura', value: 'Sin datos' },
+    { icon: 'walking', label: 'Pierna hábil', value: 'Sin datos' },
+    { icon: 'shield-alt', label: 'Club actual', value: 'Sin datos' },
+    { icon: 'user-tie', label: 'Representante', value: 'Sin datos' },
+  ];
+}
+
+function emptyOwnProfile(kind: 'player' | 'agent', photo: number): UserProfile {
+  return {
+    id: OWN_PROFILE_ID,
+    kind,
+    name: 'Sin datos',
+    location: 'Sin datos',
+    photo,
+    stats:
+      kind === 'agent'
+        ? [
+            { value: '—', label: 'Jugadores' },
+            { value: '—', label: 'Conexiones' },
+            { value: '—', label: 'Años exp.' },
+          ]
+        : [
+            { value: '—', label: 'Partidos' },
+            { value: '—', label: 'Goles' },
+            { value: '—', label: 'Asistencias' },
+          ],
+    fields: emptyOwnFields(kind),
+    about: 'Sin datos',
+  };
 }
 
 async function fetchNombreById(
@@ -137,6 +177,7 @@ export function ProfileScreen() {
   const route = useRoute<RouteProp<AuthStackParamList, 'Profile'>>();
   const {
     role,
+    currentProfile,
     getProfile,
     isOwnProfile,
     sendRequest,
@@ -153,15 +194,18 @@ export function ProfileScreen() {
   const userId = route.params?.userId ?? OWN_PROFILE_ID;
   const ownProfile = isOwnProfile(userId);
   const profile = getProfile(userId);
-  const [liveOwnProfile, setLiveOwnProfile] = useState<UserProfile | null>(null);
+  const [ownProfileData, setOwnProfileData] = useState<UserProfile>(() =>
+    emptyOwnProfile('player', currentProfile.photo),
+  );
 
   useFocusEffect(
     useCallback(() => {
-      if (!ownProfile || !profile) {
+      if (!ownProfile) {
         return;
       }
 
       let cancelled = false;
+      setOwnProfileData(emptyOwnProfile('player', currentProfile.photo));
 
       async function loadOwnProfile() {
         try {
@@ -172,6 +216,9 @@ export function ProfileScreen() {
 
           const user = userData.user;
           if (!user) {
+            if (!cancelled) {
+              setOwnProfileData(emptyOwnProfile('player', currentProfile.photo));
+            }
             return;
           }
 
@@ -184,7 +231,11 @@ export function ProfileScreen() {
           if (usuarioError) {
             throw usuarioError;
           }
-          if (!usuario || cancelled) {
+          if (cancelled) {
+            return;
+          }
+          if (!usuario) {
+            setOwnProfileData(emptyOwnProfile('player', currentProfile.photo));
             return;
           }
 
@@ -211,13 +262,14 @@ export function ProfileScreen() {
           }
 
           const isAgent = roleName === 'Representante';
+          const kind = isAgent ? 'agent' : 'player';
           const fullName = `${textValue(usuarioRow.nombre)} ${textValue(usuarioRow.apellido)}`.trim();
           const email = textValue(usuarioRow.email);
           const birthDate = formatBirthDateDisplay(usuarioRow.fecha_nacimiento);
           const age = ageFromBirthDate(usuarioRow.fecha_nacimiento);
 
-          let fields = withFieldValue(profile.fields, 'Edad', age);
-          let about = profile.about;
+          let fields = emptyOwnFields(kind);
+          let about = 'Sin datos';
 
           if (isAgent) {
             const { data: agente, error: agenteError } = await supabase
@@ -230,12 +282,9 @@ export function ProfileScreen() {
               throw agenteError;
             }
 
-            const descripcion = textValue(
-              (agente as { descripcion?: unknown } | null)?.descripcion,
+            about = valueOrPlaceholder(
+              textValue((agente as { descripcion?: unknown } | null)?.descripcion),
             );
-            if (descripcion) {
-              about = descripcion;
-            }
           } else {
             const { data: jugador, error: jugadorError } = await supabase
               .from('perfiles_jugador')
@@ -264,12 +313,36 @@ export function ProfileScreen() {
               jugadorRow?.fk_club_actual ?? null,
             );
 
-            fields = withFieldValue(fields, 'Posición', posicionNombre);
-            fields = withFieldValue(fields, 'Club actual', clubNombre);
+            fields = [
+              {
+                icon: 'futbol',
+                label: 'Posición',
+                value: valueOrPlaceholder(posicionNombre),
+              },
+              {
+                icon: 'calendar-alt',
+                label: 'Edad',
+                value: valueOrPlaceholder(age),
+              },
+              { icon: 'arrows-alt-v', label: 'Altura', value: 'Sin datos' },
+              { icon: 'walking', label: 'Pierna hábil', value: 'Sin datos' },
+              {
+                icon: 'shield-alt',
+                label: 'Club actual',
+                value: valueOrPlaceholder(clubNombre),
+              },
+              {
+                icon: 'user-tie',
+                label: 'Representante',
+                value: 'Sin datos',
+              },
+            ];
 
             const categoria = textValue(jugadorRow?.categoria);
-            if (categoria && !fields.some((field) => field.label === 'Categoría')) {
-              const posicionIndex = fields.findIndex((field) => field.label === 'Posición');
+            if (categoria) {
+              const posicionIndex = fields.findIndex(
+                (field) => field.label === 'Posición',
+              );
               const categoriaField: ProfileField = {
                 icon: 'flag',
                 label: 'Categoría',
@@ -283,8 +356,6 @@ export function ProfileScreen() {
                       ...fields.slice(posicionIndex + 1),
                     ]
                   : [...fields, categoriaField];
-            } else {
-              fields = withFieldValue(fields, 'Categoría', categoria);
             }
           }
 
@@ -292,17 +363,18 @@ export function ProfileScreen() {
             return;
           }
 
-          setLiveOwnProfile({
-            ...profile,
-            kind: isAgent ? 'agent' : roleName === 'Jugador' ? 'player' : profile.kind,
-            name: fullName || profile.name,
-            email: email || profile.email,
-            birthDate: birthDate ?? profile.birthDate,
+          setOwnProfileData({
+            ...emptyOwnProfile(kind, currentProfile.photo),
+            kind,
+            name: valueOrPlaceholder(fullName),
+            email: email || undefined,
+            birthDate,
             fields,
             about,
           });
         } catch (error) {
           if (!cancelled) {
+            setOwnProfileData(emptyOwnProfile('player', currentProfile.photo));
             Alert.alert('No pudimos cargar tu perfil', errorMessage(error));
           }
         }
@@ -313,10 +385,10 @@ export function ProfileScreen() {
       return () => {
         cancelled = true;
       };
-    }, [ownProfile, profile]),
+    }, [currentProfile.photo, ownProfile]),
   );
 
-  const displayedProfile = ownProfile ? liveOwnProfile ?? profile : profile;
+  const displayedProfile = ownProfile ? ownProfileData : profile;
   const requested = displayedProfile ? hasSentRequest(displayedProfile.id) : false;
   const connected = displayedProfile ? isConnected(displayedProfile.id) : false;
   const incoming = displayedProfile
