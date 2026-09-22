@@ -1,9 +1,10 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -19,15 +20,152 @@ import {
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { OWN_PROFILE_ID } from '../data/playerProfiles';
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
 
-function fieldValue(
-  fields: { label: string; value: string }[],
-  label: string,
+function errorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+  return 'Ocurrió un error inesperado.';
+}
+
+function textValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function formatBirthDateDisplay(value: unknown) {
+  const raw = textValue(value);
+  if (!raw) {
+    return '';
+  }
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (iso) {
+    return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  }
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    return raw;
+  }
+
+  return '';
+}
+
+function birthDateToIso(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+  if (dmy) {
+    return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    return trimmed.slice(0, 10);
+  }
+
+  return null;
+}
+
+function ageFromBirthDate(value: unknown) {
+  const raw = textValue(value);
+  if (!raw) {
+    return '';
+  }
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
+  const year = iso ? Number(iso[1]) : dmy ? Number(dmy[3]) : NaN;
+  const month = iso ? Number(iso[2]) : dmy ? Number(dmy[2]) : NaN;
+  const day = iso ? Number(iso[3]) : dmy ? Number(dmy[1]) : NaN;
+
+  if (!year || !month || !day) {
+    return '';
+  }
+
+  const birth = new Date(year, month - 1, day);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDelta = today.getMonth() - birth.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+  if (age < 0 || age > 120) {
+    return '';
+  }
+
+  return `${age} años`;
+}
+
+function splitFullName(fullName: string, fallbackLastName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { nombre: '', apellido: fallbackLastName };
+  }
+  if (parts.length === 1) {
+    return { nombre: parts[0], apellido: fallbackLastName };
+  }
+  return { nombre: parts[0], apellido: parts.slice(1).join(' ') };
+}
+
+async function findIdByName(
+  table: 'posiciones' | 'clubes',
+  idField: 'id_posicion' | 'id_club',
+  nombre: string,
 ) {
-  return fields.find((field) => field.label === label)?.value ?? '';
+  const { data, error } = await supabase
+    .from(table)
+    .select(idField)
+    .ilike('nombre', nombre)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const id = (data as Record<string, string | number>)[idField];
+  return id ?? null;
+}
+
+async function fetchNombreById(
+  table: 'posiciones' | 'clubes',
+  idField: 'id_posicion' | 'id_club',
+  id: string | number | null,
+) {
+  if (id == null) {
+    return '';
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .select('nombre')
+    .eq(idField, id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return textValue((data as { nombre?: unknown } | null)?.nombre);
 }
 
 export function EditProfileScreen() {
@@ -35,77 +173,286 @@ export function EditProfileScreen() {
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
   const { currentProfile, updateProfile } = usePlayerProfile();
-  const isAgent = currentProfile.kind === 'agent';
-  const [name, setName] = useState(currentProfile.name);
-  const [email, setEmail] = useState(currentProfile.email ?? '');
-  const [location, setLocation] = useState(currentProfile.location);
-  const [birthDate, setBirthDate] = useState(currentProfile.birthDate ?? '');
-  const [position, setPosition] = useState(
-    fieldValue(currentProfile.fields, 'Posición'),
-  );
-  const [age, setAge] = useState(fieldValue(currentProfile.fields, 'Edad'));
-  const [height, setHeight] = useState(fieldValue(currentProfile.fields, 'Altura'));
-  const [foot, setFoot] = useState(fieldValue(currentProfile.fields, 'Pierna hábil'));
-  const [club, setClub] = useState(fieldValue(currentProfile.fields, 'Club actual'));
-  const [agent, setAgent] = useState(
-    fieldValue(currentProfile.fields, 'Representante'),
-  );
-  const [agency, setAgency] = useState(fieldValue(currentProfile.fields, 'Agencia'));
-  const [experience, setExperience] = useState(
-    fieldValue(currentProfile.fields, 'Experiencia'),
-  );
-  const [specialty, setSpecialty] = useState(
-    fieldValue(currentProfile.fields, 'Especialidad'),
-  );
-  const [zone, setZone] = useState(fieldValue(currentProfile.fields, 'Zona'));
-  const [represented, setRepresented] = useState(
-    fieldValue(currentProfile.fields, 'Representados'),
-  );
-  const [focus, setFocus] = useState(fieldValue(currentProfile.fields, 'Enfoque'));
-  const [about, setAbout] = useState(currentProfile.about);
+  const [isAgent, setIsAgent] = useState(currentProfile.kind === 'agent');
+  const [lastName, setLastName] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [location, setLocation] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [position, setPosition] = useState('');
+  const [age, setAge] = useState('');
+  const [height, setHeight] = useState('');
+  const [foot, setFoot] = useState('');
+  const [club, setClub] = useState('');
+  const [agent, setAgent] = useState('');
+  const [agency, setAgency] = useState('');
+  const [experience, setExperience] = useState('');
+  const [specialty, setSpecialty] = useState('');
+  const [zone, setZone] = useState('');
+  const [represented, setRepresented] = useState('');
+  const [focus, setFocus] = useState('');
+  const [about, setAbout] = useState('');
 
-  function save() {
-    updateProfile({
-      name: name.trim() || currentProfile.name,
-      email: email.trim(),
-      location: location.trim() || currentProfile.location,
-      birthDate: birthDate.trim(),
-      about: about.trim() || currentProfile.about,
-      fields: isAgent
-        ? [
-            { icon: 'building', label: 'Agencia', value: agency.trim() || 'Agencia Fútbol Global' },
-            { icon: 'briefcase', label: 'Experiencia', value: experience.trim() || '6 años' },
-            {
-              icon: 'star',
-              label: 'Especialidad',
-              value: specialty.trim() || 'Juveniles y primer contrato',
-            },
-            { icon: 'map-marker-alt', label: 'Zona', value: zone.trim() || 'Argentina' },
-            {
-              icon: 'users',
-              label: 'Representados',
-              value: represented.trim() || '28 jugadores',
-            },
-            { icon: 'user-friends', label: 'Enfoque', value: focus.trim() || 'Carrera formativa' },
-          ]
-        : [
-            { icon: 'futbol', label: 'Posición', value: position.trim() || 'Delantero' },
-            { icon: 'calendar-alt', label: 'Edad', value: age.trim() || '21 años' },
-            { icon: 'arrows-alt-v', label: 'Altura', value: height.trim() || '1,83 m' },
-            { icon: 'walking', label: 'Pierna hábil', value: foot.trim() || 'Derecha' },
-            {
-              icon: 'shield-alt',
-              label: 'Club actual',
-              value: club.trim() || 'Racing Club',
-            },
-            {
-              icon: 'user-tie',
-              label: 'Representante',
-              value: agent.trim() || 'Sin representante',
-            },
-          ],
-    });
-    navigation.navigate('Profile', { userId: OWN_PROFILE_ID });
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      async function loadProfile() {
+        try {
+          const { data: userData, error: userError } = await supabase.auth.getUser();
+          if (userError) {
+            throw userError;
+          }
+
+          const user = userData.user;
+          if (!user) {
+            return;
+          }
+
+          const { data: usuario, error: usuarioError } = await supabase
+            .from('usuarios')
+            .select('id_usuario, nombre, apellido, email, fecha_nacimiento, fk_rol')
+            .eq('id_usuario', user.id)
+            .maybeSingle();
+
+          if (usuarioError) {
+            throw usuarioError;
+          }
+          if (!usuario || cancelled) {
+            return;
+          }
+
+          const usuarioRow = usuario as {
+            nombre?: unknown;
+            apellido?: unknown;
+            email?: unknown;
+            fecha_nacimiento?: unknown;
+            fk_rol?: string | number | null;
+          };
+
+          let roleName = '';
+          if (usuarioRow.fk_rol != null) {
+            const { data: roleRow, error: roleError } = await supabase
+              .from('roles')
+              .select('nombre')
+              .eq('id_rol', usuarioRow.fk_rol)
+              .maybeSingle();
+
+            if (roleError) {
+              throw roleError;
+            }
+            roleName = textValue((roleRow as { nombre?: unknown } | null)?.nombre);
+          }
+
+          const agentRole = roleName === 'Representante';
+          const loadedLastName = textValue(usuarioRow.apellido);
+          const fullName = `${textValue(usuarioRow.nombre)} ${loadedLastName}`.trim();
+
+          let loadedAbout = '';
+          let loadedPosition = '';
+          let loadedClub = '';
+          let loadedFoot = '';
+          let loadedAgency = '';
+
+          if (agentRole) {
+            const { data: agente, error: agenteError } = await supabase
+              .from('perfiles_representante')
+              .select('descripcion, empresa')
+              .eq('id_usuario', user.id)
+              .maybeSingle();
+
+            if (agenteError) {
+              throw agenteError;
+            }
+
+            loadedAbout = textValue(
+              (agente as { descripcion?: unknown } | null)?.descripcion,
+            );
+            loadedAgency = textValue(
+              (agente as { empresa?: unknown } | null)?.empresa,
+            );
+          } else {
+            const { data: jugador, error: jugadorError } = await supabase
+              .from('perfiles_jugador')
+              .select('fk_posicion, fk_club_actual, pierna_habil, descripcion')
+              .eq('id_usuario', user.id)
+              .maybeSingle();
+
+            if (jugadorError) {
+              throw jugadorError;
+            }
+
+            const jugadorRow = jugador as {
+              fk_posicion?: string | number | null;
+              fk_club_actual?: string | number | null;
+              pierna_habil?: unknown;
+              descripcion?: unknown;
+            } | null;
+
+            loadedPosition = await fetchNombreById(
+              'posiciones',
+              'id_posicion',
+              jugadorRow?.fk_posicion ?? null,
+            );
+            loadedClub = await fetchNombreById(
+              'clubes',
+              'id_club',
+              jugadorRow?.fk_club_actual ?? null,
+            );
+            loadedFoot = textValue(jugadorRow?.pierna_habil);
+            loadedAbout = textValue(jugadorRow?.descripcion);
+          }
+
+          if (cancelled) {
+            return;
+          }
+
+          setIsAgent(agentRole);
+          setLastName(loadedLastName);
+          setName(fullName);
+          setEmail(textValue(usuarioRow.email));
+          setBirthDate(formatBirthDateDisplay(usuarioRow.fecha_nacimiento));
+          setAge(ageFromBirthDate(usuarioRow.fecha_nacimiento));
+          setPosition(loadedPosition);
+          setClub(loadedClub);
+          setFoot(loadedFoot);
+          setAgency(loadedAgency);
+          setAbout(loadedAbout);
+        } catch (error) {
+          if (!cancelled) {
+            Alert.alert('No pudimos cargar tu perfil', errorMessage(error));
+          }
+        }
+      }
+
+      void loadProfile();
+
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  async function save() {
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        throw userError;
+      }
+
+      const user = userData.user;
+      if (!user) {
+        Alert.alert(
+          'No se pudo guardar',
+          'No hay un usuario autenticado. Iniciá sesión e intentá de nuevo.',
+        );
+        return;
+      }
+
+      const trimmedBirthDate = birthDate.trim();
+      const fechaNacimiento = trimmedBirthDate
+        ? birthDateToIso(trimmedBirthDate)
+        : null;
+      if (trimmedBirthDate && !fechaNacimiento) {
+        Alert.alert(
+          'No se pudo guardar',
+          'La fecha de nacimiento debe tener el formato DD/MM/AAAA.',
+        );
+        return;
+      }
+
+      const names = splitFullName(name, lastName);
+
+      const { error: usuarioError } = await supabase
+        .from('usuarios')
+        .update({
+          nombre: names.nombre,
+          apellido: names.apellido,
+          email: email.trim(),
+          fecha_nacimiento: fechaNacimiento,
+        })
+        .eq('id_usuario', user.id);
+
+      if (usuarioError) {
+        throw usuarioError;
+      }
+
+      if (isAgent) {
+        const { error: agenteError } = await supabase
+          .from('perfiles_representante')
+          .update({
+            descripcion: about.trim(),
+            empresa: agency.trim(),
+          })
+          .eq('id_usuario', user.id);
+
+        if (agenteError) {
+          throw agenteError;
+        }
+      } else {
+        let positionId: string | number | null = null;
+        let clubId: string | number | null = null;
+
+        if (position.trim()) {
+          positionId = await findIdByName(
+            'posiciones',
+            'id_posicion',
+            position.trim(),
+          );
+        }
+        if (club.trim()) {
+          clubId = await findIdByName('clubes', 'id_club', club.trim());
+        }
+
+        const { error: jugadorError } = await supabase
+          .from('perfiles_jugador')
+          .update({
+            fk_posicion: positionId,
+            fk_club_actual: clubId,
+            pierna_habil: foot.trim() || null,
+            descripcion: about.trim(),
+          })
+          .eq('id_usuario', user.id);
+
+        if (jugadorError) {
+          throw jugadorError;
+        }
+      }
+
+      updateProfile({
+        name: name.trim() || currentProfile.name,
+        email: email.trim(),
+        birthDate: birthDate.trim(),
+        about: about.trim(),
+        fields: isAgent
+          ? [
+              { icon: 'building', label: 'Agencia', value: agency.trim() },
+              { icon: 'briefcase', label: 'Experiencia', value: experience.trim() },
+              { icon: 'star', label: 'Especialidad', value: specialty.trim() },
+              { icon: 'map-marker-alt', label: 'Zona', value: zone.trim() },
+              { icon: 'users', label: 'Representados', value: represented.trim() },
+              { icon: 'user-friends', label: 'Enfoque', value: focus.trim() },
+            ]
+          : [
+              { icon: 'futbol', label: 'Posición', value: position.trim() },
+              { icon: 'calendar-alt', label: 'Edad', value: age.trim() },
+              { icon: 'arrows-alt-v', label: 'Altura', value: height.trim() },
+              { icon: 'walking', label: 'Pierna hábil', value: foot.trim() },
+              { icon: 'shield-alt', label: 'Club actual', value: club.trim() },
+              { icon: 'user-tie', label: 'Representante', value: agent.trim() },
+            ],
+      });
+
+      Alert.alert('Perfil actualizado', 'Tus cambios se guardaron correctamente.', [
+        {
+          text: 'OK',
+          onPress: () =>
+            navigation.navigate('Profile', { userId: OWN_PROFILE_ID }),
+        },
+      ]);
+    } catch (error) {
+      Alert.alert('No se pudo guardar', errorMessage(error));
+    }
   }
 
   return (
@@ -226,7 +573,12 @@ export function EditProfileScreen() {
             multiline
           />
 
-          <Pressable style={[styles.saveButton, { backgroundColor: brand.header }]} onPress={save}>
+          <Pressable
+            style={[styles.saveButton, { backgroundColor: brand.header }]}
+            onPress={() => {
+              void save();
+            }}
+          >
             <Text style={styles.saveButtonText}>Guardar cambios</Text>
           </Pressable>
         </ScrollView>
