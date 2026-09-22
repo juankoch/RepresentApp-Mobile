@@ -41,7 +41,7 @@ export function LoginScreen() {
     });
 
     if (error) {
-      Alert.alert('Error al iniciar sesión', error.message);
+      Alert.alert("Error", "El email o la contraseña son incorrectos.");
       return;
     }
 
