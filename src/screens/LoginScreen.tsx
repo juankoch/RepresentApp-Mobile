@@ -2,7 +2,9 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import {
+  Alert,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +19,7 @@ import {
 } from 'react-native';
 
 import { RaLogo } from '../components/RaLogo';
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 
@@ -25,9 +28,25 @@ const { width: windowWidth } = Dimensions.get('window');
 export function LoginScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const logoSize = Math.min(92, Math.max(72, windowWidth * 0.22));
   const panelRadius = Math.min(86, windowWidth * 0.22);
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
+
+  async function handleLogin() {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) {
+      Alert.alert('Error al iniciar sesión', error.message);
+      return;
+    }
+
+    navigation.navigate('CreateProfile');
+  }
 
   return (
     <View style={styles.root}>
@@ -74,13 +93,15 @@ export function LoginScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>NOMBRE</Text>
+              <Text style={styles.label}>EMAIL</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Jiara Martins"
+                placeholder="Jiaramartins@gmail.com"
                 placeholderTextColor={colors.inputText}
                 autoCapitalize="words"
                 autoCorrect={false}
+                value={email}
+                onChangeText={setEmail}
               />
             </View>
 
@@ -93,12 +114,16 @@ export function LoginScreen() {
                 secureTextEntry
                 autoCapitalize="none"
                 autoCorrect={false}
+                value={password}
+                onChangeText={setPassword}
               />
             </View>
 
             <Pressable
               style={styles.button}
-              onPress={() => navigation.navigate('CreateProfile')}
+              onPress={() => {
+                void handleLogin();
+              }}
             >
               <Text style={styles.buttonText}>Ingresa</Text>
             </Pressable>
