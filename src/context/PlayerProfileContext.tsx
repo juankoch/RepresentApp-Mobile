@@ -13,8 +13,10 @@ import {
   initialConnectedIds,
   initialIncomingRequestIds,
   isOwnProfileId,
+  OWN_PROFILE_ID,
   UserProfile,
 } from '../data/playerProfiles';
+import { supabase } from '../lib/supabase';
 import { UserRole } from '../theme/brand';
 
 export type UserRating = {
@@ -58,6 +60,36 @@ const PlayerProfileContext = createContext<PlayerProfileContextValue | undefined
   undefined,
 );
 
+export async function fetchCreatedProfileKind(userId: string) {
+  const { data: player, error: playerError } = await supabase
+    .from('perfiles_jugador')
+    .select('id_usuario')
+    .eq('id_usuario', userId)
+    .maybeSingle();
+
+  if (playerError) {
+    return { kind: null, error: playerError };
+  }
+  if (player) {
+    return { kind: 'player' as const, error: null };
+  }
+
+  const { data: agent, error: agentError } = await supabase
+    .from('perfiles_representante')
+    .select('id_usuario')
+    .eq('id_usuario', userId)
+    .maybeSingle();
+
+  if (agentError) {
+    return { kind: null, error: agentError };
+  }
+  if (agent) {
+    return { kind: 'agent' as const, error: null };
+  }
+
+  return { kind: null, error: null };
+}
+
 function emptySessionState(role: UserRole) {
   return {
     currentProfile:
@@ -70,7 +102,13 @@ function emptySessionState(role: UserRole) {
 
 export function PlayerProfileProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole>('player');
-  const [currentProfile, setCurrentProfile] = useState(currentPlayerProfile);
+  const [currentProfile, setCurrentProfile] = useState<UserProfile>({
+    ...currentPlayerProfile,
+    name: '',
+    email: '',
+    location: '',
+    about: '',
+  });
   const [sentRequestIds, setSentRequestIds] = useState<string[]>([]);
   const [incomingRequestIds, setIncomingRequestIds] = useState(
     initialIncomingRequestIds,
@@ -88,8 +126,13 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
     setCurrentProfile({
       ...next.currentProfile,
       ...profileUpdates,
-      name: profileUpdates?.name?.trim() || next.currentProfile.name,
-      about: profileUpdates?.about?.trim() || next.currentProfile.about,
+      id: OWN_PROFILE_ID,
+      kind: nextRole === 'agent' ? 'agent' : 'player',
+      name: profileUpdates?.name?.trim() || '',
+      email: profileUpdates?.email?.trim() || '',
+      location: profileUpdates?.location?.trim() || '',
+      about: profileUpdates?.about?.trim() || '',
+      birthDate: profileUpdates?.birthDate,
       fields: profileUpdates?.fields ?? next.currentProfile.fields,
       stats: profileUpdates?.stats ?? next.currentProfile.stats,
     });
