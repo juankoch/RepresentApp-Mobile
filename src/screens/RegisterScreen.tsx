@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
+  Alert,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -20,6 +21,7 @@ import {
   View,
 } from 'react-native';
 
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 
@@ -35,6 +37,9 @@ function formatBirthDate(date: Date) {
 export function RegisterScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [today] = useState(() => new Date());
@@ -51,6 +56,40 @@ export function RegisterScreen() {
     }
 
     setBirthDate(selectedDate);
+  }
+
+  async function handleRegister() {
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: name.trim(),
+          birth_date: birthDate ? formatBirthDate(birthDate) : '',
+        },
+      },
+    });
+
+    if (error) {
+      Alert.alert('Error al registrarse', error.message);
+      return;
+    }
+
+    if (!data.session) {
+      Alert.alert(
+        'Confirmá tu email',
+        'Te enviamos un correo para confirmar tu cuenta. Después de confirmarlo, iniciá sesión.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('Login'),
+          },
+        ],
+      );
+      return;
+    }
+
+    navigation.navigate('CreateProfile');
   }
 
   return (
@@ -111,6 +150,8 @@ export function RegisterScreen() {
                 placeholderTextColor={colors.inputText}
                 autoCapitalize="words"
                 autoCorrect={false}
+                value={name}
+                onChangeText={setName}
               />
             </View>
 
@@ -123,6 +164,8 @@ export function RegisterScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                value={email}
+                onChangeText={setEmail}
               />
             </View>
 
@@ -135,6 +178,8 @@ export function RegisterScreen() {
                 secureTextEntry
                 autoCapitalize="none"
                 autoCorrect={false}
+                value={password}
+                onChangeText={setPassword}
               />
             </View>
 
@@ -161,7 +206,9 @@ export function RegisterScreen() {
 
             <Pressable
               style={styles.button}
-              onPress={() => navigation.navigate('Login')}
+              onPress={() => {
+                void handleRegister();
+              }}
             >
               <Text style={styles.buttonText}>Registrate</Text>
             </Pressable>
