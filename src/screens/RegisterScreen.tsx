@@ -41,6 +41,7 @@ export function RegisterScreen() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [today] = useState(() => new Date());
@@ -60,6 +61,13 @@ export function RegisterScreen() {
   }
 
   async function handleRegister() {
+    if (password !== confirmPassword) {
+      Alert.alert(
+        'Las contraseñas no coinciden. Verificá que ambas sean iguales.',
+      );
+      return;
+    }
+
     const firstName = name.trim();
     const lastNameValue = lastName.trim();
     const { data, error } = await supabase.auth.signUp({
@@ -198,6 +206,20 @@ export function RegisterScreen() {
                 autoCorrect={false}
                 value={password}
                 onChangeText={setPassword}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>CONFIRMAR CONTRASEÑA</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="•••••••"
+                placeholderTextColor={colors.inputText}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
               />
             </View>
 
