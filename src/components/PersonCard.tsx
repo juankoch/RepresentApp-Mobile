@@ -17,7 +17,7 @@ const cardWidth = Math.min(118, (windowWidth - horizontalPadding * 2 - 24) / 3.1
 
 type PersonCardProps = {
   name: string;
-  photo: number;
+  photo?: number;
   subtitle: string;
   rating?: string;
   country?: string;
@@ -46,7 +46,11 @@ export function PersonCard({
   return (
     <Pressable style={styles.personCard} onPress={onPress}>
       <View>
-        <Image source={photo} style={styles.personPhoto} />
+        {photo ? (
+          <Image source={photo} style={styles.personPhoto} />
+        ) : (
+          <View style={styles.personPhoto} />
+        )}
         <Pressable
           style={[
             badge === 'plus' ? [styles.plusBadge, { backgroundColor: brand.header }] : styles.photoUserBadge,

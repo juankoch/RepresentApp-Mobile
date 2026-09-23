@@ -727,7 +727,11 @@ export function EditProfileScreen() {
           contentContainerStyle={styles.form}
           keyboardShouldPersistTaps="handled"
         >
-          <Image source={currentProfile.photo} style={styles.avatar} />
+          {currentProfile.photo ? (
+            <Image source={currentProfile.photo} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatar} />
+          )}
 
           <Text style={styles.label}>Nombre</Text>
           <TextInput style={styles.input} value={name} onChangeText={setName} />

@@ -82,7 +82,7 @@ export function LoginScreen() {
 
     const { data: usuario, error: usuarioError } = await supabase
       .from('usuarios')
-      .select('nombre, apellido, email')
+      .select('nombre, apellido, email, es_premium')
       .eq('id_usuario', userId)
       .maybeSingle();
 
@@ -95,6 +95,7 @@ export function LoginScreen() {
       nombre?: unknown;
       apellido?: unknown;
       email?: unknown;
+      es_premium?: unknown;
     } | null;
     const fullName = `${typeof usuarioRow?.nombre === 'string' ? usuarioRow.nombre.trim() : ''} ${
       typeof usuarioRow?.apellido === 'string' ? usuarioRow.apellido.trim() : ''
@@ -102,10 +103,14 @@ export function LoginScreen() {
     const usuarioEmail =
       typeof usuarioRow?.email === 'string' ? usuarioRow.email.trim() : '';
 
-    startSession(kind, {
-      name: fullName,
-      email: usuarioEmail || userData.user.email || '',
-    });
+    startSession(
+      kind,
+      {
+        name: fullName,
+        email: usuarioEmail || userData.user.email || '',
+      },
+      usuarioRow?.es_premium === true,
+    );
     navigation.navigate('Home');
   }
 

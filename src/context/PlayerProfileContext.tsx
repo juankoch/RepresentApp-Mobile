@@ -5,13 +5,8 @@ import {
   PlayerHighlight,
 } from '../data/playerHighlights';
 import {
-  agentConnectedIds,
-  agentIncomingRequestIds,
-  currentAgentProfile,
-  currentPlayerProfile,
+  createEmptySessionProfile,
   getUserProfileById,
-  initialConnectedIds,
-  initialIncomingRequestIds,
   isOwnProfileId,
   OWN_PROFILE_ID,
   UserProfile,
@@ -26,7 +21,11 @@ export type UserRating = {
 
 type PlayerProfileContextValue = {
   role: UserRole;
-  startSession: (nextRole: UserRole, profileUpdates?: Partial<UserProfile>) => void;
+  startSession: (
+    nextRole: UserRole,
+    profileUpdates?: Partial<UserProfile>,
+    sessionIsPremium?: boolean,
+  ) => void;
   currentProfile: UserProfile;
   getProfile: (userId: string) => UserProfile | undefined;
   isOwnProfile: (userId?: string) => boolean;
@@ -40,7 +39,7 @@ type PlayerProfileContextValue = {
   rejectIncomingRequest: (userId: string) => void;
   isConnected: (userId: string) => boolean;
   isPremium: boolean;
-  activatePremium: () => void;
+  activatePremium: () => Promise<{ ok: true } | { ok: false; message: string }>;
   ratings: Record<string, UserRating>;
   rateUser: (userId: string, stars: number, comment: string) => void;
   getRating: (userId: string) => UserRating | undefined;
@@ -90,37 +89,205 @@ export async function fetchCreatedProfileKind(userId: string) {
   return { kind: null, error: null };
 }
 
+function textValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isRemotePhotoUrl(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+export type AuthenticatedUserIdentity = {
+  name: string;
+  firstName: string;
+  email: string;
+  photoUrl?: string;
+  isPremium: boolean;
+};
+
+function isPremiumFlag(value: unknown) {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+export async function fetchAuthenticatedUserPremium() {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return { isPremium: false, error: userError };
+  }
+
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('es_premium')
+    .eq('id_usuario', userData.user.id)
+    .maybeSingle();
+
+  if (error || !data) {
+    return { isPremium: false, error };
+  }
+
+  const premiumRow = data as { es_premium?: unknown } | null;
+  return {
+    isPremium: isPremiumFlag(premiumRow?.es_premium),
+    error: null,
+  };
+}
+
+export async function persistAuthenticatedUserPremium() {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return {
+      ok: false as const,
+      message:
+        userError?.message ??
+        'No hay un usuario autenticado. Iniciá sesión e intentá de nuevo.',
+    };
+  }
+
+  const userId = userData.user.id;
+
+  const { data: updatedRows, error: updateError, count } = await supabase
+    .from('usuarios')
+    .update({ es_premium: true }, { count: 'exact' })
+    .eq('id_usuario', userId)
+    .select('id_usuario, es_premium');
+
+  console.log('[PREMIUM DEBUG] userId:', userId);
+  console.log('[PREMIUM DEBUG] updateError:', updateError);
+  console.log('[PREMIUM DEBUG] count:', count);
+  console.log('[PREMIUM DEBUG] updatedRows:', updatedRows);
+
+  if (updateError) {
+    return { ok: false as const, message: updateError.message };
+  }
+
+  const updatedRow = Array.isArray(updatedRows)
+    ? (updatedRows[0] as { id_usuario?: unknown; es_premium?: unknown } | undefined)
+    : (updatedRows as { id_usuario?: unknown; es_premium?: unknown } | null);
+
+  if ((count ?? 0) < 1 || !updatedRow) {
+    return {
+      ok: false as const,
+      message:
+        'No se actualizó ninguna fila en public.usuarios. Comprobá que exista tu usuario y que RLS permita UPDATE de es_premium cuando auth.uid() = id_usuario.',
+    };
+  }
+
+  if (!isPremiumFlag(updatedRow.es_premium)) {
+    return {
+      ok: false as const,
+      message: 'El UPDATE no devolvió es_premium = true.',
+    };
+  }
+
+  const { data: confirmed, error: confirmError } = await supabase
+    .from('usuarios')
+    .select('es_premium')
+    .eq('id_usuario', userId)
+    .maybeSingle();
+
+  console.log('[PREMIUM DEBUG] userId:', userId);
+  console.log('[PREMIUM DEBUG] confirmError:', confirmError);
+  console.log('[PREMIUM DEBUG] confirmData:', confirmed);
+
+  if (confirmError) {
+    return { ok: false as const, message: confirmError.message };
+  }
+
+  const confirmedRow = confirmed as { es_premium?: unknown } | null;
+  if (!isPremiumFlag(confirmedRow?.es_premium)) {
+    return {
+      ok: false as const,
+      message:
+        'Supabase no confirmó es_premium = true al volver a leer public.usuarios.',
+    };
+  }
+
+  return { ok: true as const };
+}
+
+export async function fetchAuthenticatedUserIdentity() {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) {
+    return { identity: null as AuthenticatedUserIdentity | null, error: userError };
+  }
+
+  const user = userData.user;
+  if (!user) {
+    return {
+      identity: null as AuthenticatedUserIdentity | null,
+      error: new Error('No hay un usuario autenticado.'),
+    };
+  }
+
+  const { data: usuario, error: usuarioError } = await supabase
+    .from('usuarios')
+    .select('nombre, apellido, email, foto_perfil')
+    .eq('id_usuario', user.id)
+    .maybeSingle();
+
+  if (usuarioError) {
+    return { identity: null as AuthenticatedUserIdentity | null, error: usuarioError };
+  }
+
+  const usuarioRow = usuario as {
+    nombre?: unknown;
+    apellido?: unknown;
+    email?: unknown;
+    foto_perfil?: unknown;
+  } | null;
+
+  const firstName = textValue(usuarioRow?.nombre);
+  const lastName = textValue(usuarioRow?.apellido);
+  const photoRaw = textValue(usuarioRow?.foto_perfil);
+
+  const { data: premiumRow } = await supabase
+    .from('usuarios')
+    .select('es_premium')
+    .eq('id_usuario', user.id)
+    .maybeSingle();
+
+  return {
+    identity: {
+      name: `${firstName} ${lastName}`.trim(),
+      firstName,
+      email: textValue(usuarioRow?.email) || user.email?.trim() || '',
+      photoUrl: isRemotePhotoUrl(photoRaw) ? photoRaw : undefined,
+      isPremium:
+        (premiumRow as { es_premium?: unknown } | null)?.es_premium === true,
+    },
+    error: null,
+  };
+}
+
 function emptySessionState(role: UserRole) {
   return {
-    currentProfile:
-      role === 'agent' ? currentAgentProfile : currentPlayerProfile,
-    incomingRequestIds:
-      role === 'agent' ? agentIncomingRequestIds : initialIncomingRequestIds,
-    connectedIds: role === 'agent' ? agentConnectedIds : initialConnectedIds,
+    currentProfile: createEmptySessionProfile(
+      role === 'agent' ? 'agent' : 'player',
+    ),
+    incomingRequestIds: [] as string[],
+    connectedIds: [] as string[],
   };
 }
 
 export function PlayerProfileProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole>('player');
-  const [currentProfile, setCurrentProfile] = useState<UserProfile>({
-    ...currentPlayerProfile,
-    name: '',
-    email: '',
-    location: '',
-    about: '',
-  });
-  const [sentRequestIds, setSentRequestIds] = useState<string[]>([]);
-  const [incomingRequestIds, setIncomingRequestIds] = useState(
-    initialIncomingRequestIds,
+  const [currentProfile, setCurrentProfile] = useState<UserProfile>(() =>
+    createEmptySessionProfile('player'),
   );
-  const [connectedIds, setConnectedIds] = useState(initialConnectedIds);
+  const [sentRequestIds, setSentRequestIds] = useState<string[]>([]);
+  const [incomingRequestIds, setIncomingRequestIds] = useState<string[]>([]);
+  const [connectedIds, setConnectedIds] = useState<string[]>([]);
   const [isPremium, setIsPremium] = useState(false);
   const [ratings, setRatings] = useState<Record<string, UserRating>>({});
   const [reportedIds, setReportedIds] = useState<string[]>([]);
   const [blockedIds, setBlockedIds] = useState<string[]>([]);
   const [highlights, setHighlights] = useState<PlayerHighlight[]>([]);
 
-  function applyRole(nextRole: UserRole, profileUpdates?: Partial<UserProfile>) {
+  function applyRole(
+    nextRole: UserRole,
+    profileUpdates?: Partial<UserProfile>,
+    sessionIsPremium = false,
+  ) {
     const next = emptySessionState(nextRole);
     setRole(nextRole);
     setCurrentProfile({
@@ -135,11 +302,13 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
       birthDate: profileUpdates?.birthDate,
       fields: profileUpdates?.fields ?? next.currentProfile.fields,
       stats: profileUpdates?.stats ?? next.currentProfile.stats,
+      photo: profileUpdates?.photo,
+      photoUrl: profileUpdates?.photoUrl,
     });
     setSentRequestIds([]);
     setIncomingRequestIds(next.incomingRequestIds);
     setConnectedIds(next.connectedIds);
-    setIsPremium(false);
+    setIsPremium(sessionIsPremium === true);
     setRatings({});
     setReportedIds([]);
     setBlockedIds([]);
@@ -196,7 +365,14 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
       },
       isConnected: (userId) => connectedIds.includes(userId),
       isPremium,
-      activatePremium: () => setIsPremium(true),
+      activatePremium: async () => {
+        const result = await persistAuthenticatedUserPremium();
+        if (!result.ok) {
+          return result;
+        }
+        setIsPremium(true);
+        return result;
+      },
       ratings,
       rateUser: (userId, stars, comment) => {
         if (isOwnProfileId(userId)) {
