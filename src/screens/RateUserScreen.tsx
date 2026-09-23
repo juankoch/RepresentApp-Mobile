@@ -19,6 +19,7 @@ import {
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { getProfileRoleLabel } from '../data/playerProfiles';
+import { usePublicProfile } from '../hooks/usePublicProfile';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -28,8 +29,8 @@ export function RateUserScreen() {
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'RateUser'>>();
-  const { getProfile, getRating, rateUser } = usePlayerProfile();
-  const profile = getProfile(route.params.userId);
+  const { getRating, rateUser } = usePlayerProfile();
+  const profile = usePublicProfile(route.params.userId);
   const existing = profile ? getRating(profile.id) : undefined;
   const [stars, setStars] = useState(existing?.stars ?? 0);
   const [comment, setComment] = useState(existing?.comment ?? '');
@@ -73,7 +74,11 @@ export function RateUserScreen() {
         >
           {profile ? (
             <View style={styles.identity}>
-              <Image source={profile.photo} style={styles.avatar} />
+              {profile.photoUrl ? (
+                <Image source={{ uri: profile.photoUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatar} />
+              )}
               <Text style={styles.name}>{profile.name}</Text>
               <Text style={styles.role}>
                 {getProfileRoleLabel(profile.kind)}

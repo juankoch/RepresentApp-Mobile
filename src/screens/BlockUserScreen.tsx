@@ -15,6 +15,7 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
+import { usePublicProfile } from '../hooks/usePublicProfile';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -24,8 +25,8 @@ export function BlockUserScreen() {
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'BlockUser'>>();
-  const { getProfile, isBlocked, blockUser, unblockUser } = usePlayerProfile();
-  const profile = getProfile(route.params.userId);
+  const { isBlocked, blockUser, unblockUser } = usePlayerProfile();
+  const profile = usePublicProfile(route.params.userId);
   const blocked = profile ? isBlocked(profile.id) : false;
 
   function confirm() {
@@ -69,7 +70,11 @@ export function BlockUserScreen() {
           <View style={styles.card}>
             {profile ? (
               <>
-                <Image source={profile.photo} style={styles.avatar} />
+                {profile.photoUrl ? (
+                  <Image source={{ uri: profile.photoUrl }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatar} />
+                )}
                 <Text style={styles.title}>
                   {blocked
                     ? `¿Desbloquear a ${profile.name}?`

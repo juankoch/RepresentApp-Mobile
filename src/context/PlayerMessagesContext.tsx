@@ -2,20 +2,14 @@ import {
   createContext,
   ReactNode,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from 'react';
 
 import {
-  agentConversations,
-  agentMessageRequests,
   Conversation,
-  initialConversations,
-  initialMessageRequests,
   MessageRequest,
 } from '../data/playerMessages';
-import { usePlayerProfile } from './PlayerProfileContext';
 
 type PlayerMessagesContextValue = {
   conversations: Conversation[];
@@ -39,19 +33,8 @@ function currentTimeLabel() {
 }
 
 export function PlayerMessagesProvider({ children }: { children: ReactNode }) {
-  const { role } = usePlayerProfile();
-  const [conversations, setConversations] = useState(initialConversations);
-  const [requests, setRequests] = useState(initialMessageRequests);
-
-  useEffect(() => {
-    if (role === 'agent') {
-      setConversations(agentConversations);
-      setRequests(agentMessageRequests);
-      return;
-    }
-    setConversations(initialConversations);
-    setRequests(initialMessageRequests);
-  }, [role]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [requests, setRequests] = useState<MessageRequest[]>([]);
 
   const value = useMemo<PlayerMessagesContextValue>(
     () => ({
@@ -121,16 +104,11 @@ export function PlayerMessagesProvider({ children }: { children: ReactNode }) {
         setRequests((current) => current.filter((item) => item.id !== requestId));
       },
       resetSession: () => {
-        if (role === 'agent') {
-          setConversations(agentConversations);
-          setRequests(agentMessageRequests);
-          return;
-        }
-        setConversations(initialConversations);
-        setRequests(initialMessageRequests);
+        setConversations([]);
+        setRequests([]);
       },
     }),
-    [conversations, requests, role],
+    [conversations, requests],
   );
 
   return (

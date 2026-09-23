@@ -25,7 +25,11 @@ import {
 } from '../context/PlayerProfileContext';
 import { usePlayerTrials } from '../context/PlayerTrialsContext';
 import { OWN_PROFILE_ID } from '../data/playerProfiles';
-import { playerTrials } from '../data/playerTrials';
+import {
+  DirectoryPerson,
+  fetchDirectoryAgents,
+  fetchDirectoryPlayers,
+} from '../lib/directory';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -35,67 +39,8 @@ const horizontalPadding = 20;
 const cardWidth = Math.min(118, (windowWidth - horizontalPadding * 2 - 24) / 3.15);
 
 const mockImages = {
-  juan: require('../../assets/mock/juan.png'),
   banner: require('../../assets/mock/banner.png'),
 };
-
-const agents = [
-  {
-    id: 'marcos-gomez',
-    name: 'Marco Gómez',
-    agency: 'Elite Sports',
-    rating: '4.8',
-    photo: require('../../assets/mock/agent-marco.png'),
-  },
-  {
-    id: 'teo-perez',
-    name: 'Teo Pérez',
-    agency: 'NextGen Agency',
-    rating: '4.7',
-    photo: require('../../assets/mock/agent-teo.png'),
-  },
-  {
-    id: 'john-kennedy',
-    name: 'John Kennedy',
-    agency: 'Global Sports',
-    rating: '4.6',
-    photo: require('../../assets/mock/agent-john.png'),
-  },
-  {
-    id: 'lucas-moretti',
-    name: 'Lucas Moretti',
-    agency: 'ProTalent',
-    rating: '4.5',
-    photo: require('../../assets/mock/agent-lucas.png'),
-  },
-];
-
-const players = [
-  {
-    id: 'mateo-ruiz',
-    name: 'Mateo Ruiz',
-    meta: 'Delantero · 2006',
-    photo: require('../../assets/mock/player-mateo.png'),
-  },
-  {
-    id: 'santiago-lopez',
-    name: 'Santiago López',
-    meta: 'Mediocampista · 2005',
-    photo: require('../../assets/mock/player-santiago.png'),
-  },
-  {
-    id: 'valentin-diaz',
-    name: 'Valentín Díaz',
-    meta: 'Defensor · 2006',
-    photo: require('../../assets/mock/player-valentin.png'),
-  },
-  {
-    id: 'tobias-fernandez',
-    name: 'Tobías Fernández',
-    meta: 'Arquero · 2007',
-    photo: require('../../assets/mock/player-tobias.png'),
-  },
-];
 
 const quickAccess = [
   {
@@ -107,7 +52,6 @@ const quickAccess = [
     icon: 'share-alt',
     title: 'Solicitudes de conexión',
     subtitle: 'Personas que quieren conectarse',
-    badge: 2,
   },
   {
     icon: 'users',
@@ -118,7 +62,6 @@ const quickAccess = [
     icon: 'comment-dots',
     title: 'Solicitudes de mensajes',
     subtitle: 'Nuevos mensajes pendientes',
-    badge: 1,
   },
 ] as const;
 
@@ -144,8 +87,12 @@ export function HomeScreen() {
   const [fetchedFirstName, setFetchedFirstName] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
   const [isPremium, setIsPremium] = useState(false);
+  const [players, setPlayers] = useState<DirectoryPerson[]>([]);
+  const [agents, setAgents] = useState<DirectoryPerson[]>([]);
   const firstName = fetchedFirstName || firstNameFrom(currentProfile.name);
-  const upcomingTrials = isAgent ? publishedTrials : playerTrials;
+  const upcomingTrials = publishedTrials;
+  const previewPlayers = players.slice(0, 8);
+  const previewAgents = agents.slice(0, 8);
 
   useFocusEffect(
     useCallback(() => {
@@ -180,8 +127,20 @@ export function HomeScreen() {
         }
       }
 
+      async function loadDirectory() {
+        const [nextPlayers, nextAgents] = await Promise.all([
+          fetchDirectoryPlayers().catch(() => [] as DirectoryPerson[]),
+          fetchDirectoryAgents().catch(() => [] as DirectoryPerson[]),
+        ]);
+        if (!cancelled) {
+          setPlayers(nextPlayers);
+          setAgents(nextAgents);
+        }
+      }
+
       void loadIdentity();
       void loadPremium();
+      void loadDirectory();
 
       return () => {
         cancelled = true;
@@ -216,31 +175,23 @@ export function HomeScreen() {
             <View style={styles.brandActions}>
               <View style={styles.bellWrap}>
                 <FontAwesome5 name="bell" size={18} color="#FFFFFF" />
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>3</Text>
-                </View>
               </View>
-              <View>
-                <Pressable
-                  onPress={() =>
-                    navigation.navigate('Profile', { userId: OWN_PROFILE_ID })
-                  }
-                >
-                  {photoUrl ? (
-                    <Image source={{ uri: photoUrl }} style={styles.headerAvatar} />
-                  ) : (
-                    <View style={styles.headerAvatar} />
-                  )}
-                </Pressable>
+              <Pressable
+                onPress={() =>
+                  navigation.navigate('Profile', { userId: OWN_PROFILE_ID })
+                }
+              >
+                {photoUrl ? (
+                  <Image source={{ uri: photoUrl }} style={styles.headerAvatar} />
+                ) : (
+                  <View style={styles.headerAvatar} />
+                )}
                 {isPremium ? (
-                  <View style={styles.headerPremiumBadge}>
-                    <PremiumBadge
-                      size="sm"
-                      onPress={() => navigation.push('Premium')}
-                    />
+                  <View style={styles.headerPremiumBadge} pointerEvents="none">
+                    <PremiumBadge size="sm" />
                   </View>
                 ) : null}
-              </View>
+              </Pressable>
             </View>
           </View>
 
@@ -306,17 +257,12 @@ export function HomeScreen() {
                         color={brand.accent}
                       />
                     </View>
-                    {item.title === 'Solicitudes de conexión' ? (
-                      incomingRequestIds.length > 0 ? (
-                        <View style={styles.quickBadge}>
-                          <Text style={styles.badgeText}>
-                            {incomingRequestIds.length}
-                          </Text>
-                        </View>
-                      ) : null
-                    ) : 'badge' in item && item.badge ? (
+                    {item.title === 'Solicitudes de conexión' &&
+                    incomingRequestIds.length > 0 ? (
                       <View style={styles.quickBadge}>
-                        <Text style={styles.badgeText}>{item.badge}</Text>
+                        <Text style={styles.badgeText}>
+                          {incomingRequestIds.length}
+                        </Text>
                       </View>
                     ) : null}
                   </View>
@@ -399,20 +345,27 @@ export function HomeScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.cardsRow}
               >
-                {players.map((player) => (
-                  <PersonCard
-                    key={player.id}
-                    name={player.name}
-                    photo={player.photo}
-                    subtitle={player.meta}
-                    country="🇦🇷  Argentina"
-                    badge="plus"
-                    pending={hasSentRequest(player.id)}
-                    connected={isConnected(player.id)}
-                    onPress={() => navigation.push('Profile', { userId: player.id })}
-                    onRequest={() => sendRequest(player.id)}
-                  />
-                ))}
+                {previewPlayers.length === 0 ? (
+                  <Text style={styles.emptyDirectory}>
+                    Todavía no hay futbolistas para mostrar.
+                  </Text>
+                ) : (
+                  previewPlayers.map((player) => (
+                    <PersonCard
+                      key={player.id}
+                      name={player.name}
+                      photoUrl={player.photoUrl}
+                      subtitle={player.subtitle}
+                      country={player.location || undefined}
+                      isPremium={player.isPremium}
+                      badge="plus"
+                      pending={hasSentRequest(player.id)}
+                      connected={isConnected(player.id)}
+                      onPress={() => navigation.push('Profile', { userId: player.id })}
+                      onRequest={() => sendRequest(player.id)}
+                    />
+                  ))
+                )}
               </ScrollView>
 
               <View style={styles.sectionHeader}>
@@ -426,7 +379,12 @@ export function HomeScreen() {
                 </Pressable>
               </View>
 
-              {upcomingTrials.slice(0, 3).map((trial) => (
+              {upcomingTrials.length === 0 ? (
+                <Text style={styles.emptyDirectory}>
+                  Todavía no hay pruebas publicadas.
+                </Text>
+              ) : (
+                upcomingTrials.slice(0, 3).map((trial) => (
                 <Pressable
                   key={trial.id}
                   style={styles.homeTrialCard}
@@ -434,7 +392,11 @@ export function HomeScreen() {
                     navigation.navigate('TrialDetail', { trialId: trial.id })
                   }
                 >
-                  <Image source={trial.crest} style={styles.homeTrialCrest} />
+                  {trial.crest ? (
+                    <Image source={trial.crest} style={styles.homeTrialCrest} />
+                  ) : (
+                    <View style={styles.homeTrialCrest} />
+                  )}
                   <View style={styles.homeTrialBody}>
                     <Text style={styles.homeTrialTitle}>{trial.name}</Text>
                     <Text style={styles.homeTrialMeta}>
@@ -443,7 +405,8 @@ export function HomeScreen() {
                   </View>
                   <FontAwesome5 name="chevron-right" size={12} color="#B0B0B0" />
                 </Pressable>
-              ))}
+                ))
+              )}
             </>
           ) : (
             <>
@@ -461,20 +424,26 @@ export function HomeScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.cardsRow}
               >
-                {agents.map((agent) => (
-                  <PersonCard
-                    key={agent.id}
-                    name={agent.name}
-                    photo={agent.photo}
-                    subtitle={agent.agency}
-                    rating={agent.rating}
-                    badge="user"
-                    pending={hasSentRequest(agent.id)}
-                    connected={isConnected(agent.id)}
-                    onPress={() => navigation.push('Profile', { userId: agent.id })}
-                    onRequest={() => sendRequest(agent.id)}
-                  />
-                ))}
+                {previewAgents.length === 0 ? (
+                  <Text style={styles.emptyDirectory}>
+                    Todavía no hay representantes para mostrar.
+                  </Text>
+                ) : (
+                  previewAgents.map((agent) => (
+                    <PersonCard
+                      key={agent.id}
+                      name={agent.name}
+                      photoUrl={agent.photoUrl}
+                      subtitle={agent.subtitle}
+                      isPremium={agent.isPremium}
+                      badge="user"
+                      pending={hasSentRequest(agent.id)}
+                      connected={isConnected(agent.id)}
+                      onPress={() => navigation.push('Profile', { userId: agent.id })}
+                      onRequest={() => sendRequest(agent.id)}
+                    />
+                  ))
+                )}
               </ScrollView>
 
               <View style={styles.sectionHeader}>
@@ -491,20 +460,27 @@ export function HomeScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.cardsRow}
               >
-                {players.map((player) => (
-                  <PersonCard
-                    key={player.id}
-                    name={player.name}
-                    photo={player.photo}
-                    subtitle={player.meta}
-                    country="🇦🇷  Argentina"
-                    badge="plus"
-                    pending={hasSentRequest(player.id)}
-                    connected={isConnected(player.id)}
-                    onPress={() => navigation.push('Profile', { userId: player.id })}
-                    onRequest={() => sendRequest(player.id)}
-                  />
-                ))}
+                {previewPlayers.length === 0 ? (
+                  <Text style={styles.emptyDirectory}>
+                    Todavía no hay futbolistas para mostrar.
+                  </Text>
+                ) : (
+                  previewPlayers.map((player) => (
+                    <PersonCard
+                      key={player.id}
+                      name={player.name}
+                      photoUrl={player.photoUrl}
+                      subtitle={player.subtitle}
+                      country={player.location || undefined}
+                      isPremium={player.isPremium}
+                      badge="plus"
+                      pending={hasSentRequest(player.id)}
+                      connected={isConnected(player.id)}
+                      onPress={() => navigation.push('Profile', { userId: player.id })}
+                      onRequest={() => sendRequest(player.id)}
+                    />
+                  ))
+                )}
               </ScrollView>
             </>
           )}
@@ -768,6 +744,11 @@ const styles = StyleSheet.create({
     paddingRight: 8,
     marginBottom: 24,
     gap: 12,
+  },
+  emptyDirectory: {
+    color: '#8A8A8A',
+    fontSize: 13,
+    paddingVertical: 12,
   },
   personCard: {
     width: cardWidth,

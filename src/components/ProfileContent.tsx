@@ -24,7 +24,9 @@ export function ProfileContent({
     <View style={styles.wrap}>
       <View style={styles.identity}>
         <View>
-          {profile.photo ? (
+          {profile.photoUrl ? (
+            <Image source={{ uri: profile.photoUrl }} style={styles.avatar} />
+          ) : profile.photo ? (
             <Image source={profile.photo} style={styles.avatar} />
           ) : (
             <View style={styles.avatar} />

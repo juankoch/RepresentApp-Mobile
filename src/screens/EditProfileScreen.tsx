@@ -1,6 +1,7 @@
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -24,6 +25,11 @@ import {
 } from '../context/PlayerProfileContext';
 import { OWN_PROFILE_ID } from '../data/playerProfiles';
 import { findOrCreateClubId } from '../lib/clubes';
+import {
+  isRemotePhotoUrl,
+  photoExtension,
+  uploadAuthenticatedUserPhoto,
+} from '../lib/fotoPerfil';
 import { piernaHabilToDb, piernaHabilToDisplay } from '../lib/piernaHabil';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
@@ -245,6 +251,15 @@ export function EditProfileScreen() {
   const [represented, setRepresented] = useState('');
   const [focus, setFocus] = useState('');
   const [about, setAbout] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [localPreviewUri, setLocalPreviewUri] = useState<string | undefined>(
+    undefined,
+  );
+  const pendingPhotoRef = useRef<{
+    uri: string;
+    mimeType: string;
+    extension: string;
+  } | null>(null);
   const agencyRef = useRef('');
   const aboutRef = useRef('');
   const experienceRef = useRef('');
@@ -342,7 +357,7 @@ export function EditProfileScreen() {
 
           const { data: usuario, error: usuarioError } = await supabase
             .from('usuarios')
-            .select('id_usuario, nombre, apellido, email, fecha_nacimiento')
+            .select('id_usuario, nombre, apellido, email, fecha_nacimiento, foto_perfil')
             .eq('id_usuario', user.id)
             .maybeSingle();
 
@@ -358,6 +373,7 @@ export function EditProfileScreen() {
             apellido?: unknown;
             email?: unknown;
             fecha_nacimiento?: unknown;
+            foto_perfil?: unknown;
           };
 
           const agentRole = kind === 'agent';
@@ -494,6 +510,11 @@ export function EditProfileScreen() {
             focusRef.current = loadedFocus;
             setFocus(loadedFocus);
           }
+          const photoRaw = textValue(usuarioRow.foto_perfil);
+          setPhotoUrl(isRemotePhotoUrl(photoRaw) ? photoRaw : undefined);
+          if (!pendingPhotoRef.current) {
+            setLocalPreviewUri(undefined);
+          }
         } catch (error) {
           if (!cancelled) {
             Alert.alert('No pudimos cargar tu perfil', errorMessage(error));
@@ -508,6 +529,40 @@ export function EditProfileScreen() {
       };
     }, []),
   );
+
+  async function pickProfilePhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'No se pudo abrir la galería',
+        'Necesitamos acceso a tus fotos para cambiar la foto de perfil.',
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    if (!asset?.uri) {
+      return;
+    }
+
+    pendingPhotoRef.current = {
+      uri: asset.uri,
+      mimeType: asset.mimeType || 'image/jpeg',
+      extension: photoExtension(asset.mimeType, asset.fileName),
+    };
+    setLocalPreviewUri(asset.uri);
+  }
 
   async function save() {
     try {
@@ -538,6 +593,21 @@ export function EditProfileScreen() {
       }
 
       const names = splitFullName(name, lastName);
+      let nextPhotoUrl = photoUrl;
+
+      if (pendingPhotoRef.current) {
+        try {
+          nextPhotoUrl = await uploadAuthenticatedUserPhoto({
+            userId: user.id,
+            uri: pendingPhotoRef.current.uri,
+            mimeType: pendingPhotoRef.current.mimeType,
+            extension: pendingPhotoRef.current.extension,
+          });
+        } catch (uploadError) {
+          Alert.alert('No se pudo subir la foto', errorMessage(uploadError));
+          return;
+        }
+      }
 
       const { error: usuarioError } = await supabase
         .from('usuarios')
@@ -546,6 +616,9 @@ export function EditProfileScreen() {
           apellido: names.apellido,
           email: email.trim(),
           fecha_nacimiento: fechaNacimiento,
+          ...(pendingPhotoRef.current && nextPhotoUrl
+            ? { foto_perfil: nextPhotoUrl }
+            : {}),
         })
         .eq('id_usuario', user.id);
 
@@ -645,11 +718,17 @@ export function EditProfileScreen() {
         }
       }
 
+      pendingPhotoRef.current = null;
+      setPhotoUrl(nextPhotoUrl);
+      setLocalPreviewUri(undefined);
+
       updateProfile({
         name: name.trim(),
         email: email.trim(),
         birthDate: birthDate.trim(),
         about: aboutRef.current.trim(),
+        photo: undefined,
+        photoUrl: nextPhotoUrl,
         kind: isAgent ? 'agent' : 'player',
         fields: isAgent
           ? [
@@ -727,11 +806,25 @@ export function EditProfileScreen() {
           contentContainerStyle={styles.form}
           keyboardShouldPersistTaps="handled"
         >
-          {currentProfile.photo ? (
-            <Image source={currentProfile.photo} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatar} />
-          )}
+          <View style={styles.avatarWrap}>
+            {localPreviewUri || photoUrl ? (
+              <Image
+                source={{ uri: localPreviewUri || photoUrl }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatar} />
+            )}
+            <Pressable
+              style={[styles.photoEditButton, { backgroundColor: brand.accent }]}
+              onPress={() => {
+                void pickProfilePhoto();
+              }}
+              hitSlop={8}
+            >
+              <FontAwesome5 name="camera" size={11} color={brand.header} />
+            </Pressable>
+          </View>
 
           <Text style={styles.label}>Nombre</Text>
           <TextInput style={styles.input} value={name} onChangeText={setName} />
@@ -889,13 +982,28 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 28,
   },
-  avatar: {
+  avatarWrap: {
     alignSelf: 'center',
+    marginBottom: 18,
+  },
+  avatar: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    marginBottom: 18,
     backgroundColor: colors.inputBackground,
+  },
+  photoEditButton: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.homeAccent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.background,
   },
   label: {
     marginBottom: 6,

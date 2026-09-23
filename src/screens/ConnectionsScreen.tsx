@@ -1,7 +1,8 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useCallback, useState } from 'react';
 import {
   Image,
   Platform,
@@ -15,10 +16,8 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
-import {
-  getProfileRoleLabel,
-  getProfileSecondary,
-} from '../data/playerProfiles';
+import { getProfileRoleLabel, UserProfile } from '../data/playerProfiles';
+import { fetchPublicUserProfile } from '../lib/directory';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -27,11 +26,26 @@ export function ConnectionsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
-  const { connectedIds, getProfile } = usePlayerProfile();
+  const { connectedIds } = usePlayerProfile();
+  const [connections, setConnections] = useState<UserProfile[]>([]);
 
-  const connections = connectedIds
-    .map((id) => getProfile(id))
-    .filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void Promise.all(connectedIds.map((id) => fetchPublicUserProfile(id))).then(
+        (profiles) => {
+          if (!cancelled) {
+            setConnections(
+              profiles.filter((profile): profile is UserProfile => Boolean(profile)),
+            );
+          }
+        },
+      );
+      return () => {
+        cancelled = true;
+      };
+    }, [connectedIds]),
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -70,14 +84,18 @@ export function ConnectionsScreen() {
                   navigation.push('Profile', { userId: profile.id })
                 }
               >
-                <Image source={profile.photo} style={styles.avatar} />
+                {profile.photoUrl ? (
+                  <Image source={{ uri: profile.photoUrl }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatar} />
+                )}
                 <View style={styles.body}>
                   <Text style={styles.name}>{profile.name}</Text>
                   <Text style={styles.role}>
                     {getProfileRoleLabel(profile.kind)}
                   </Text>
                   <Text style={styles.subtitle}>
-                    {getProfileSecondary(profile)}
+                    {profile.fields.find((field) => field.label === 'Posición' || field.label === 'Agencia')?.value || profile.location}
                   </Text>
                 </View>
                 <View style={styles.statusBadge}>
@@ -124,12 +142,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
   },
   list: {
-    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 24,
   },
   emptyText: {
-    marginTop: 32,
-    marginHorizontal: 16,
+    marginTop: 24,
     color: '#8A8A8A',
     fontSize: 14,
     textAlign: 'center',
@@ -137,7 +155,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
   },
@@ -157,17 +174,18 @@ const styles = StyleSheet.create({
   },
   role: {
     marginTop: 2,
-    color: '#4A4A4A',
+    color: colors.homeHeader,
     fontSize: 12,
+    fontWeight: '700',
   },
   subtitle: {
-    marginTop: 1,
+    marginTop: 2,
     color: '#8A8A8A',
     fontSize: 12,
   },
   statusBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 6,
     borderRadius: 12,
     backgroundColor: '#E7F8DC',
   },

@@ -19,6 +19,7 @@ import {
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { getProfileRoleLabel } from '../data/playerProfiles';
+import { usePublicProfile } from '../hooks/usePublicProfile';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -36,8 +37,8 @@ export function ReportUserScreen() {
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'ReportUser'>>();
-  const { getProfile, hasReported, reportUser } = usePlayerProfile();
-  const profile = getProfile(route.params.userId);
+  const { hasReported, reportUser } = usePlayerProfile();
+  const profile = usePublicProfile(route.params.userId);
   const alreadyReported = profile ? hasReported(profile.id) : false;
   const [reason, setReason] = useState(reasons[0]);
   const [detail, setDetail] = useState('');
@@ -81,7 +82,11 @@ export function ReportUserScreen() {
         >
           {profile ? (
             <View style={styles.identity}>
-              <Image source={profile.photo} style={styles.avatar} />
+              {profile.photoUrl ? (
+                <Image source={{ uri: profile.photoUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatar} />
+              )}
               <View>
                 <Text style={styles.name}>{profile.name}</Text>
                 <Text style={styles.role}>

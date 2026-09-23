@@ -16,6 +16,7 @@ import {
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { getProfileRoleLabel } from '../data/playerProfiles';
+import { usePublicProfile } from '../hooks/usePublicProfile';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -25,8 +26,8 @@ export function UserOptionsScreen() {
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'UserOptions'>>();
-  const { getProfile, isBlocked, getRating, hasReported } = usePlayerProfile();
-  const profile = getProfile(route.params.userId);
+  const { isBlocked, getRating, hasReported } = usePlayerProfile();
+  const profile = usePublicProfile(route.params.userId);
   const blocked = profile ? isBlocked(profile.id) : false;
   const rated = profile ? Boolean(getRating(profile.id)) : false;
   const reported = profile ? hasReported(profile.id) : false;
@@ -58,7 +59,11 @@ export function UserOptionsScreen() {
         >
           {profile ? (
             <View style={styles.identity}>
-              <Image source={profile.photo} style={styles.avatar} />
+              {profile.photoUrl ? (
+                <Image source={{ uri: profile.photoUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatar} />
+              )}
               <View style={styles.identityBody}>
                 <Text style={styles.name}>{profile.name}</Text>
                 <Text style={styles.role}>

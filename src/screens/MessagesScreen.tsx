@@ -149,7 +149,13 @@ export function MessagesScreen() {
                       });
                     }}
                   >
-                    <Image source={conversation.avatar} style={styles.avatar} />
+                    {conversation.avatarUrl ? (
+                      <Image source={{ uri: conversation.avatarUrl }} style={styles.avatar} />
+                    ) : conversation.avatar ? (
+                      <Image source={conversation.avatar} style={styles.avatar} />
+                    ) : (
+                      <View style={styles.avatar} />
+                    )}
                     <View style={styles.conversationBody}>
                       <View style={styles.conversationTop}>
                         <Text style={styles.conversationName} numberOfLines={1}>
@@ -187,7 +193,13 @@ export function MessagesScreen() {
             ) : (
               visibleRequests.map((request) => (
                 <View key={request.id} style={styles.requestRow}>
-                  <Image source={request.avatar} style={styles.avatar} />
+                  {request.avatarUrl ? (
+                    <Image source={{ uri: request.avatarUrl }} style={styles.avatar} />
+                  ) : request.avatar ? (
+                    <Image source={request.avatar} style={styles.avatar} />
+                  ) : (
+                    <View style={styles.avatar} />
+                  )}
                   <View style={styles.requestBody}>
                     <Text style={styles.conversationName}>{request.name}</Text>
                     <Text style={styles.requestRole}>{request.role}</Text>
