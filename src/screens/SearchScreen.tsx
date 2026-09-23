@@ -2,7 +2,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Image,
   Platform,
@@ -17,14 +17,10 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
-import {
-  initialRecentSearches,
-  playerSearchResults,
-} from '../data/playerSearch';
+import { DirectorySearchResult, searchDirectory } from '../lib/directory';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
-import { matchesSearch } from '../utils/search';
 
 export function SearchScreen() {
   const navigation =
@@ -32,13 +28,36 @@ export function SearchScreen() {
   const brand = useBrandColors();
   const { role } = usePlayerProfile();
   const [searchQuery, setSearchQuery] = useState('');
-  const [recentSearches, setRecentSearches] = useState(initialRecentSearches);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [visibleResults, setVisibleResults] = useState<DirectorySearchResult[]>([]);
 
-  const visibleResults = playerSearchResults.filter(
-    (result) =>
-      matchesSearch(result.name, searchQuery) ||
-      matchesSearch(result.subtitle, searchQuery),
-  );
+  useEffect(() => {
+    let cancelled = false;
+    const query = searchQuery.trim();
+    if (!query) {
+      setVisibleResults([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void searchDirectory(query)
+        .then((results) => {
+          if (!cancelled) {
+            setVisibleResults(results);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setVisibleResults([]);
+          }
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -131,18 +150,32 @@ export function SearchScreen() {
             </Text>
             {visibleResults.length === 0 ? (
               <Text style={styles.emptyText}>
-                No encontramos resultados para esa búsqueda.
+                {searchQuery.trim()
+                  ? 'No encontramos resultados para esa búsqueda.'
+                  : 'Escribí un nombre, apellido, club o posición.'}
               </Text>
             ) : (
               visibleResults.map((result) => (
                 <Pressable
-                  key={result.id}
+                  key={`${result.kind}-${result.id}`}
                   style={styles.resultRow}
-                  onPress={() =>
-                    navigation.push('Profile', { userId: result.id })
-                  }
+                  onPress={() => {
+                    if (result.kind === 'club') {
+                      return;
+                    }
+                    setRecentSearches((current) =>
+                      current.includes(result.name)
+                        ? current
+                        : [result.name, ...current].slice(0, 8),
+                    );
+                    navigation.push('Profile', { userId: result.id });
+                  }}
                 >
-                  <Image source={result.photo} style={styles.avatar} />
+                  {result.photoUrl ? (
+                    <Image source={{ uri: result.photoUrl }} style={styles.avatar} />
+                  ) : (
+                    <View style={styles.avatar} />
+                  )}
                   <View style={styles.resultBody}>
                     <Text style={styles.resultName} numberOfLines={1}>
                       {result.name}

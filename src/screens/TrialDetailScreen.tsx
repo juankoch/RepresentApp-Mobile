@@ -70,11 +70,19 @@ export function TrialDetailScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <Image source={trial.hero} style={styles.hero} />
+        {trial.hero ? (
+          <Image source={trial.hero} style={styles.hero} />
+        ) : (
+          <View style={styles.hero} />
+        )}
 
         <View style={styles.sheet}>
           <View style={styles.titleRow}>
-            <Image source={trial.crest} style={styles.crest} />
+            {trial.crest ? (
+              <Image source={trial.crest} style={styles.crest} />
+            ) : (
+              <View style={styles.crest} />
+            )}
             <View style={styles.titleCopy}>
               <Text style={styles.trialName}>{trial.name}</Text>
               <Text style={styles.clubName}>{trial.club}</Text>

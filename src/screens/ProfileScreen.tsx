@@ -27,6 +27,7 @@ import {
   usePlayerProfile,
 } from '../context/PlayerProfileContext';
 import { OWN_PROFILE_ID, ProfileField, UserProfile } from '../data/playerProfiles';
+import { fetchPublicUserProfile } from '../lib/directory';
 import { piernaHabilToDisplay } from '../lib/piernaHabil';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
@@ -137,6 +138,16 @@ function valueOrPlaceholder(value?: string) {
   return value && value.trim() ? value.trim() : 'Sin datos';
 }
 
+function isRemotePhotoUrl(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+function locationFromUsuario(pais?: unknown, ciudad?: unknown) {
+  const city = textValue(ciudad);
+  const country = textValue(pais);
+  return [city, country].filter(Boolean).join(', ');
+}
+
 function emptyOwnFields(kind: 'player' | 'agent'): ProfileField[] {
   if (kind === 'agent') {
     return [
@@ -160,13 +171,12 @@ function emptyOwnFields(kind: 'player' | 'agent'): ProfileField[] {
   ];
 }
 
-function emptyOwnProfile(kind: 'player' | 'agent', photo?: number): UserProfile {
+function emptyOwnProfile(kind: 'player' | 'agent'): UserProfile {
   return {
     id: OWN_PROFILE_ID,
     kind,
     name: 'Sin datos',
     location: 'Sin datos',
-    photo,
     stats:
       kind === 'agent'
         ? [
@@ -215,7 +225,6 @@ export function ProfileScreen() {
   const {
     role,
     currentProfile,
-    getProfile,
     isOwnProfile,
     sendRequest,
     hasSentRequest,
@@ -230,9 +239,44 @@ export function ProfileScreen() {
 
   const userId = route.params?.userId ?? OWN_PROFILE_ID;
   const ownProfile = isOwnProfile(userId);
-  const profile = getProfile(userId);
   const [ownProfileData, setOwnProfileData] = useState<UserProfile>(() =>
-    emptyOwnProfile(role === 'agent' ? 'agent' : 'player', currentProfile.photo),
+    emptyOwnProfile(role === 'agent' ? 'agent' : 'player'),
+  );
+  const [missingPlayerProfile, setMissingPlayerProfile] = useState(false);
+  const [otherProfile, setOtherProfile] = useState<UserProfile | undefined>();
+  const [loadingOther, setLoadingOther] = useState(!ownProfile);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (ownProfile) {
+        return;
+      }
+
+      let isCurrent = true;
+      setLoadingOther(true);
+
+      async function loadOtherProfile() {
+        try {
+          const loaded = await fetchPublicUserProfile(userId);
+          if (isCurrent) {
+            setOtherProfile(loaded ?? undefined);
+          }
+        } catch {
+          if (isCurrent) {
+            setOtherProfile(undefined);
+          }
+        } finally {
+          if (isCurrent) {
+            setLoadingOther(false);
+          }
+        }
+      }
+
+      void loadOtherProfile();
+      return () => {
+        isCurrent = false;
+      };
+    }, [ownProfile, userId]),
   );
 
   useFocusEffect(
@@ -245,7 +289,7 @@ export function ProfileScreen() {
 
       if (role === 'agent') {
         setOwnProfileData((current) => ({
-          ...emptyOwnProfile('agent', currentProfile.photo),
+          ...emptyOwnProfile('agent'),
           name: currentProfile.name || current.name,
           email: currentProfile.email || current.email,
           about: currentProfile.about || current.about,
@@ -271,11 +315,28 @@ export function ProfileScreen() {
             throw kindError;
           }
 
-          const { data: usuario, error: usuarioError } = await supabase
+          let { data: usuario, error: usuarioError } = await supabase
             .from('usuarios')
-            .select('id_usuario, nombre, apellido, email, fecha_nacimiento')
+            .select(
+              'id_usuario, nombre, apellido, email, fecha_nacimiento, foto_perfil, pais, ciudad',
+            )
             .eq('id_usuario', user.id)
             .maybeSingle();
+
+          if (
+            usuarioError &&
+            /ciudad/i.test(usuarioError.message)
+          ) {
+            const retry = await supabase
+              .from('usuarios')
+              .select(
+                'id_usuario, nombre, apellido, email, fecha_nacimiento, foto_perfil, pais',
+              )
+              .eq('id_usuario', user.id)
+              .maybeSingle();
+            usuario = retry.data as typeof usuario;
+            usuarioError = retry.error;
+          }
 
           if (usuarioError) {
             throw usuarioError;
@@ -284,6 +345,8 @@ export function ProfileScreen() {
             return;
           }
           if (!usuario) {
+            setMissingPlayerProfile(createdKind !== 'agent');
+            setOwnProfileData(emptyOwnProfile(role === 'agent' ? 'agent' : 'player'));
             return;
           }
 
@@ -292,6 +355,9 @@ export function ProfileScreen() {
             apellido?: unknown;
             email?: unknown;
             fecha_nacimiento?: unknown;
+            foto_perfil?: unknown;
+            pais?: unknown;
+            ciudad?: unknown;
           };
 
           const isAgent = role === 'agent' || createdKind === 'agent';
@@ -300,9 +366,13 @@ export function ProfileScreen() {
           const email = textValue(usuarioRow.email);
           const birthDate = formatBirthDateDisplay(usuarioRow.fecha_nacimiento);
           const age = ageFromBirthDate(usuarioRow.fecha_nacimiento);
+          const photoRaw = textValue(usuarioRow.foto_perfil);
+          const photoUrl = isRemotePhotoUrl(photoRaw) ? photoRaw : undefined;
+          const location = locationFromUsuario(usuarioRow.pais, usuarioRow.ciudad);
 
           let fields = emptyOwnFields(kind);
           let about = 'Sin datos';
+          let playerProfileMissing = false;
 
           if (isAgent) {
             const { data: agente, error: agenteError } = await supabase
@@ -380,69 +450,85 @@ export function ProfileScreen() {
               descripcion?: unknown;
               altura_cm?: unknown;
             } | null;
-            about = valueOrPlaceholder(textValue(jugadorRow?.descripcion));
 
-            const posicionNombre = await fetchNombreById(
-              'posiciones',
-              'id_posicion',
-              jugadorRow?.fk_posicion ?? null,
-            );
-            const clubNombre = await fetchNombreById(
-              'clubes',
-              'id_club',
-              jugadorRow?.fk_club_actual ?? null,
-            );
+            playerProfileMissing = !jugadorRow;
 
-            fields = [
-              {
-                icon: 'futbol',
-                label: 'Posición',
-                value: valueOrPlaceholder(posicionNombre),
-              },
-              {
-                icon: 'flag',
-                label: 'Categoría',
-                value: valueOrPlaceholder(textValue(jugadorRow?.categoria)),
-              },
-              {
-                icon: 'calendar-alt',
-                label: 'Edad',
-                value: valueOrPlaceholder(age),
-              },
-              {
-                icon: 'arrows-alt-v',
-                label: 'Altura',
-                value: valueOrPlaceholder(alturaDisplay(jugadorRow?.altura_cm)),
-              },
-              {
-                icon: 'walking',
-                label: 'Pierna hábil',
-                value: valueOrPlaceholder(
-                  piernaHabilToDisplay(jugadorRow?.pierna_habil),
-                ),
-              },
-              {
-                icon: 'shield-alt',
-                label: 'Club actual',
-                value: valueOrPlaceholder(clubNombre),
-              },
-              {
-                icon: 'user-tie',
-                label: 'Representante',
-                value: 'Sin datos',
-              },
-            ];
+            if (!jugadorRow) {
+              about = 'Todavía no creaste tu perfil de jugador.';
+              fields = emptyOwnFields('player').map((field) =>
+                field.label === 'Edad'
+                  ? { ...field, value: valueOrPlaceholder(age) }
+                  : field,
+              );
+            } else {
+              about = valueOrPlaceholder(textValue(jugadorRow.descripcion));
+
+              const posicionNombre = await fetchNombreById(
+                'posiciones',
+                'id_posicion',
+                jugadorRow.fk_posicion ?? null,
+              );
+              const clubNombre = await fetchNombreById(
+                'clubes',
+                'id_club',
+                jugadorRow.fk_club_actual ?? null,
+              );
+
+              fields = [
+                {
+                  icon: 'futbol',
+                  label: 'Posición',
+                  value: valueOrPlaceholder(posicionNombre),
+                },
+                {
+                  icon: 'flag',
+                  label: 'Categoría',
+                  value: valueOrPlaceholder(textValue(jugadorRow.categoria)),
+                },
+                {
+                  icon: 'calendar-alt',
+                  label: 'Edad',
+                  value: valueOrPlaceholder(age),
+                },
+                {
+                  icon: 'arrows-alt-v',
+                  label: 'Altura',
+                  value: valueOrPlaceholder(alturaDisplay(jugadorRow.altura_cm)),
+                },
+                {
+                  icon: 'walking',
+                  label: 'Pierna hábil',
+                  value: valueOrPlaceholder(
+                    piernaHabilToDisplay(jugadorRow.pierna_habil),
+                  ),
+                },
+                {
+                  icon: 'shield-alt',
+                  label: 'Club actual',
+                  value: valueOrPlaceholder(clubNombre),
+                },
+                {
+                  icon: 'user-tie',
+                  label: 'Representante',
+                  value: 'Sin datos',
+                },
+              ];
+            }
           }
 
           if (!isCurrent) {
             return;
           }
 
+          setMissingPlayerProfile(playerProfileMissing);
           setOwnProfileData({
-            ...emptyOwnProfile(kind, currentProfile.photo),
+            ...emptyOwnProfile(kind),
             kind,
             name: valueOrPlaceholder(fullName),
             email: email || undefined,
+            location: valueOrPlaceholder(location),
+            photo: undefined,
+            photoUrl,
             birthDate,
             fields,
             about,
@@ -459,10 +545,10 @@ export function ProfileScreen() {
       return () => {
         isCurrent = false;
       };
-    }, [currentProfile.photo, ownProfile, role]),
+    }, [currentProfile.about, currentProfile.email, currentProfile.name, ownProfile, role]),
   );
 
-  const displayedProfile = ownProfile ? ownProfileData : profile;
+  const displayedProfile = ownProfile ? ownProfileData : otherProfile;
   const requested = displayedProfile ? hasSentRequest(displayedProfile.id) : false;
   const connected = displayedProfile ? isConnected(displayedProfile.id) : false;
   const incoming = displayedProfile
@@ -472,6 +558,14 @@ export function ProfileScreen() {
   const rating = displayedProfile ? getRating(displayedProfile.id) : undefined;
 
   if (!displayedProfile) {
+    if (!ownProfile && loadingOther) {
+      return (
+        <View style={[styles.root, { backgroundColor: brand.header }]}>
+          <StatusBar style="light" />
+          <PlayerTabBar />
+        </View>
+      );
+    }
     return (
       <View style={[styles.root, { backgroundColor: brand.header }]}>
         <StatusBar style="light" />
@@ -541,9 +635,12 @@ export function ProfileScreen() {
             profile={displayedProfile}
             photoBadge={
               ownProfile ? (
-                <View style={styles.photoBadge}>
+                <Pressable
+                  style={styles.photoBadge}
+                  onPress={() => navigation.navigate('EditProfile')}
+                >
                   <FontAwesome5 name="pen" size={10} color={colors.homeHeader} />
-                </View>
+                </Pressable>
               ) : null
             }
             nameAccessory={
@@ -557,6 +654,15 @@ export function ProfileScreen() {
             footer={
               ownProfile ? (
                 <View>
+                  {missingPlayerProfile ? (
+                    <Pressable
+                      style={styles.editButton}
+                      onPress={() => navigation.navigate('CreateProfile')}
+                    >
+                      <FontAwesome5 name="user-plus" size={13} color={colors.homeHeader} />
+                      <Text style={styles.editButtonText}>Crear perfil</Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     style={styles.editButton}
                     onPress={() => navigation.navigate('EditProfile')}

@@ -76,7 +76,13 @@ export function ChatScreen() {
             }
           }}
         >
-          <Image source={conversation.avatar} style={styles.headerAvatar} />
+          {conversation.avatarUrl ? (
+            <Image source={{ uri: conversation.avatarUrl }} style={styles.headerAvatar} />
+          ) : conversation.avatar ? (
+            <Image source={conversation.avatar} style={styles.headerAvatar} />
+          ) : (
+            <View style={styles.headerAvatar} />
+          )}
           <View>
             <Text style={styles.headerName}>{conversation.name}</Text>
             <Text style={styles.headerRole}>{conversation.role}</Text>

@@ -301,7 +301,11 @@ export function TrialsScreen() {
                         navigation.navigate('TrialDetail', { trialId: trial.id })
                       }
                     >
-                      <Image source={trial.crest} style={styles.crest} />
+                      {trial.crest ? (
+                        <Image source={trial.crest} style={styles.crest} />
+                      ) : (
+                        <View style={styles.crest} />
+                      )}
                       <View style={styles.cardBody}>
                         <View style={styles.cardTitleRow}>
                           <Text style={styles.cardTitle}>{trial.name}</Text>

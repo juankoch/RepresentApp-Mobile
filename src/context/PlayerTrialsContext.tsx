@@ -2,7 +2,6 @@ import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
 
 import {
   getPlayerTrialById,
-  initialPublishedTrials,
   PlayerTrial,
   playerTrials,
 } from '../data/playerTrials';
@@ -23,7 +22,7 @@ const PlayerTrialsContext = createContext<PlayerTrialsContextValue | undefined>(
 
 export function PlayerTrialsProvider({ children }: { children: ReactNode }) {
   const [appliedTrialIds, setAppliedTrialIds] = useState<string[]>([]);
-  const [publishedTrials, setPublishedTrials] = useState(initialPublishedTrials);
+  const [publishedTrials, setPublishedTrials] = useState<PlayerTrial[]>([]);
 
   const value = useMemo<PlayerTrialsContextValue>(
     () => ({
@@ -41,8 +40,6 @@ export function PlayerTrialsProvider({ children }: { children: ReactNode }) {
           {
             ...trial,
             id,
-            crest: require('../../assets/mock/agent-marco.png'),
-            hero: require('../../assets/mock/trial-hero.png'),
             status: 'active',
             applicants: 0,
             applicantIds: [],
@@ -56,7 +53,7 @@ export function PlayerTrialsProvider({ children }: { children: ReactNode }) {
         playerTrials.find((trial) => trial.id === trialId),
       resetSession: () => {
         setAppliedTrialIds([]);
-        setPublishedTrials(initialPublishedTrials);
+        setPublishedTrials([]);
       },
     }),
     [appliedTrialIds, publishedTrials],

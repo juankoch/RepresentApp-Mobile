@@ -18,9 +18,11 @@ const cardWidth = Math.min(118, (windowWidth - horizontalPadding * 2 - 24) / 3.1
 type PersonCardProps = {
   name: string;
   photo?: number;
+  photoUrl?: string;
   subtitle: string;
   rating?: string;
   country?: string;
+  isPremium?: boolean;
   pending: boolean;
   connected?: boolean;
   badge: 'user' | 'plus';
@@ -31,9 +33,11 @@ type PersonCardProps = {
 export function PersonCard({
   name,
   photo,
+  photoUrl,
   subtitle,
   rating,
   country,
+  isPremium,
   pending,
   connected,
   badge,
@@ -46,11 +50,18 @@ export function PersonCard({
   return (
     <Pressable style={styles.personCard} onPress={onPress}>
       <View>
-        {photo ? (
+        {photoUrl ? (
+          <Image source={{ uri: photoUrl }} style={styles.personPhoto} />
+        ) : photo ? (
           <Image source={photo} style={styles.personPhoto} />
         ) : (
           <View style={styles.personPhoto} />
         )}
+        {isPremium ? (
+          <View style={styles.premiumMark}>
+            <FontAwesome5 name="crown" solid size={8} color={brand.accent} />
+          </View>
+        ) : null}
         <Pressable
           style={[
             badge === 'plus' ? [styles.plusBadge, { backgroundColor: brand.header }] : styles.photoUserBadge,
@@ -138,6 +149,17 @@ const styles = StyleSheet.create({
   },
   plusBadgePending: {
     backgroundColor: '#E8E8E8',
+  },
+  premiumMark: {
+    position: 'absolute',
+    left: 6,
+    top: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.homeHeader,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   connectedBadge: {
     backgroundColor: colors.homeHeader,

@@ -1,7 +1,8 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useCallback, useState } from 'react';
 import {
   Image,
   Platform,
@@ -15,10 +16,8 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
-import {
-  getProfileRoleLabel,
-  getProfileSecondary,
-} from '../data/playerProfiles';
+import { getProfileRoleLabel, UserProfile } from '../data/playerProfiles';
+import { fetchPublicUserProfile } from '../lib/directory';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -29,14 +28,28 @@ export function ConnectionRequestsScreen() {
   const brand = useBrandColors();
   const {
     incomingRequestIds,
-    getProfile,
     acceptIncomingRequest,
     rejectIncomingRequest,
   } = usePlayerProfile();
+  const [requests, setRequests] = useState<UserProfile[]>([]);
 
-  const requests = incomingRequestIds
-    .map((id) => getProfile(id))
-    .filter((profile): profile is NonNullable<typeof profile> => Boolean(profile));
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void Promise.all(
+        incomingRequestIds.map((id) => fetchPublicUserProfile(id)),
+      ).then((profiles) => {
+        if (!cancelled) {
+          setRequests(
+            profiles.filter((profile): profile is UserProfile => Boolean(profile)),
+          );
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [incomingRequestIds]),
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -75,14 +88,18 @@ export function ConnectionRequestsScreen() {
                   navigation.push('Profile', { userId: profile.id })
                 }
               >
-                <Image source={profile.photo} style={styles.avatar} />
+                {profile.photoUrl ? (
+                  <Image source={{ uri: profile.photoUrl }} style={styles.avatar} />
+                ) : (
+                  <View style={styles.avatar} />
+                )}
                 <View style={styles.body}>
                   <Text style={styles.name}>{profile.name}</Text>
                   <Text style={styles.role}>
                     {getProfileRoleLabel(profile.kind)}
                   </Text>
                   <Text style={styles.subtitle}>
-                    {getProfileSecondary(profile)}
+                    {profile.location}
                   </Text>
                 </View>
                 <Pressable

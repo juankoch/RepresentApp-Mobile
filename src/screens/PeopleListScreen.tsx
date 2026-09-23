@@ -1,7 +1,8 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useCallback, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -16,10 +17,10 @@ import { PersonCard } from '../components/PersonCard';
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
 import {
-  getProfileRating,
-  getProfileSecondary,
-  getProfilesByKind,
-} from '../data/playerProfiles';
+  DirectoryPerson,
+  fetchDirectoryAgents,
+  fetchDirectoryPlayers,
+} from '../lib/directory';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -31,7 +32,28 @@ export function PeopleListScreen() {
   const route = useRoute<RouteProp<AuthStackParamList, 'PeopleList'>>();
   const { sendRequest, hasSentRequest, isConnected } = usePlayerProfile();
   const kind = route.params.kind;
-  const people = getProfilesByKind(kind);
+  const [people, setPeople] = useState<DirectoryPerson[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      async function loadPeople() {
+        const next =
+          kind === 'player'
+            ? await fetchDirectoryPlayers().catch(() => [] as DirectoryPerson[])
+            : await fetchDirectoryAgents().catch(() => [] as DirectoryPerson[]);
+        if (!cancelled) {
+          setPeople(next);
+        }
+      }
+
+      void loadPeople();
+      return () => {
+        cancelled = true;
+      };
+    }, [kind]),
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -59,21 +81,29 @@ export function PeopleListScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.grid}
         >
-          {people.map((profile) => (
-            <PersonCard
-              key={profile.id}
-              name={profile.name}
-              photo={profile.photo}
-              subtitle={getProfileSecondary(profile)}
-              rating={kind === 'agent' ? getProfileRating(profile) : undefined}
-              country={kind === 'player' ? '🇦🇷  Argentina' : undefined}
-              badge={kind === 'player' ? 'plus' : 'user'}
-              pending={hasSentRequest(profile.id)}
-              connected={isConnected(profile.id)}
-              onPress={() => navigation.push('Profile', { userId: profile.id })}
-              onRequest={() => sendRequest(profile.id)}
-            />
-          ))}
+          {people.length === 0 ? (
+            <Text style={styles.emptyText}>
+              {kind === 'player'
+                ? 'Todavía no hay futbolistas para mostrar.'
+                : 'Todavía no hay representantes para mostrar.'}
+            </Text>
+          ) : (
+            people.map((profile) => (
+              <PersonCard
+                key={profile.id}
+                name={profile.name}
+                photoUrl={profile.photoUrl}
+                subtitle={profile.subtitle}
+                country={kind === 'player' ? profile.location || undefined : undefined}
+                isPremium={profile.isPremium}
+                badge={kind === 'player' ? 'plus' : 'user'}
+                pending={hasSentRequest(profile.id)}
+                connected={isConnected(profile.id)}
+                onPress={() => navigation.push('Profile', { userId: profile.id })}
+                onRequest={() => sendRequest(profile.id)}
+              />
+            ))
+          )}
         </ScrollView>
       </View>
 
@@ -118,5 +148,11 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 24,
     gap: 12,
+  },
+  emptyText: {
+    width: '100%',
+    color: '#8A8A8A',
+    fontSize: 13,
+    paddingVertical: 12,
   },
 });
