@@ -160,7 +160,7 @@ function emptyOwnFields(kind: 'player' | 'agent'): ProfileField[] {
   ];
 }
 
-function emptyOwnProfile(kind: 'player' | 'agent', photo: number): UserProfile {
+function emptyOwnProfile(kind: 'player' | 'agent', photo?: number): UserProfile {
   return {
     id: OWN_PROFILE_ID,
     kind,

@@ -24,7 +24,11 @@ export function ProfileContent({
     <View style={styles.wrap}>
       <View style={styles.identity}>
         <View>
-          <Image source={profile.photo} style={styles.avatar} />
+          {profile.photo ? (
+            <Image source={profile.photo} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatar} />
+          )}
           {photoBadge}
         </View>
         <View style={styles.nameRow}>

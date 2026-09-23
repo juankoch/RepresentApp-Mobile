@@ -24,7 +24,8 @@ export type UserProfile = {
   name: string;
   email?: string;
   location: string;
-  photo: number;
+  photo?: number;
+  photoUrl?: string;
   stats: ProfileStat[];
   fields: ProfileField[];
   about: string;
@@ -34,6 +35,47 @@ export type UserProfile = {
 
 export function isOwnProfileId(userId?: string) {
   return !userId || userId === OWN_PROFILE_ID;
+}
+
+export function createEmptySessionProfile(kind: 'player' | 'agent'): UserProfile {
+  return {
+    id: OWN_PROFILE_ID,
+    kind,
+    name: '',
+    email: '',
+    location: '',
+    stats:
+      kind === 'agent'
+        ? [
+            { value: '—', label: 'Jugadores' },
+            { value: '—', label: 'Conexiones' },
+            { value: '—', label: 'Años exp.' },
+          ]
+        : [
+            { value: '—', label: 'Partidos' },
+            { value: '—', label: 'Goles' },
+            { value: '—', label: 'Asistencias' },
+          ],
+    fields:
+      kind === 'agent'
+        ? [
+            { icon: 'building', label: 'Agencia', value: '' },
+            { icon: 'briefcase', label: 'Experiencia', value: '' },
+            { icon: 'star', label: 'Especialidad', value: '' },
+            { icon: 'map-marker-alt', label: 'Zona', value: '' },
+            { icon: 'users', label: 'Representados', value: '' },
+            { icon: 'user-friends', label: 'Enfoque', value: '' },
+          ]
+        : [
+            { icon: 'futbol', label: 'Posición', value: '' },
+            { icon: 'calendar-alt', label: 'Edad', value: '' },
+            { icon: 'arrows-alt-v', label: 'Altura', value: '' },
+            { icon: 'walking', label: 'Pierna hábil', value: '' },
+            { icon: 'shield-alt', label: 'Club actual', value: '' },
+            { icon: 'user-tie', label: 'Representante', value: '' },
+          ],
+    about: '',
+  };
 }
 
 export const currentPlayerProfile: UserProfile = {

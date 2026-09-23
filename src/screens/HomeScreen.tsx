@@ -1,7 +1,8 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useCallback, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -17,7 +18,11 @@ import {
 import { PersonCard } from '../components/PersonCard';
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { PremiumBadge } from '../components/PremiumBadge';
-import { usePlayerProfile } from '../context/PlayerProfileContext';
+import {
+  fetchAuthenticatedUserIdentity,
+  fetchAuthenticatedUserPremium,
+  usePlayerProfile,
+} from '../context/PlayerProfileContext';
 import { usePlayerTrials } from '../context/PlayerTrialsContext';
 import { OWN_PROFILE_ID } from '../data/playerProfiles';
 import { playerTrials } from '../data/playerTrials';
@@ -117,16 +122,72 @@ const quickAccess = [
   },
 ] as const;
 
+function firstNameFrom(fullName: string) {
+  return fullName.trim().split(/\s+/).filter(Boolean)[0] ?? '';
+}
+
 export function HomeScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
-  const { sendRequest, hasSentRequest, isConnected, incomingRequestIds, isPremium, role, currentProfile } =
-    usePlayerProfile();
+  const {
+    sendRequest,
+    hasSentRequest,
+    isConnected,
+    incomingRequestIds,
+    role,
+    currentProfile,
+    updateProfile,
+  } = usePlayerProfile();
   const { publishedTrials } = usePlayerTrials();
   const brand = useBrandColors();
   const isAgent = role === 'agent';
-  const firstName = currentProfile.name.split(' ')[0];
+  const [fetchedFirstName, setFetchedFirstName] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [isPremium, setIsPremium] = useState(false);
+  const firstName = fetchedFirstName || firstNameFrom(currentProfile.name);
   const upcomingTrials = isAgent ? publishedTrials : playerTrials;
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      async function loadIdentity() {
+        const { identity, error } = await fetchAuthenticatedUserIdentity();
+        if (cancelled) {
+          return;
+        }
+        if (error || !identity) {
+          return;
+        }
+
+        const nextFirstName =
+          identity.firstName || firstNameFrom(identity.name);
+        if (nextFirstName) {
+          setFetchedFirstName(nextFirstName);
+        }
+        setPhotoUrl(identity.photoUrl);
+        updateProfile({
+          name: identity.name || currentProfile.name,
+          email: identity.email,
+          photoUrl: identity.photoUrl,
+        });
+      }
+
+      async function loadPremium() {
+        const { isPremium: nextIsPremium } = await fetchAuthenticatedUserPremium();
+        if (!cancelled) {
+          setIsPremium(nextIsPremium);
+        }
+      }
+
+      void loadIdentity();
+      void loadPremium();
+
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -165,7 +226,11 @@ export function HomeScreen() {
                     navigation.navigate('Profile', { userId: OWN_PROFILE_ID })
                   }
                 >
-                  <Image source={currentProfile.photo} style={styles.headerAvatar} />
+                  {photoUrl ? (
+                    <Image source={{ uri: photoUrl }} style={styles.headerAvatar} />
+                  ) : (
+                    <View style={styles.headerAvatar} />
+                  )}
                 </Pressable>
                 {isPremium ? (
                   <View style={styles.headerPremiumBadge}>
@@ -196,7 +261,11 @@ export function HomeScreen() {
                 navigation.navigate('Profile', { userId: OWN_PROFILE_ID })
               }
             >
-              <Image source={currentProfile.photo} style={styles.welcomeAvatar} />
+              {photoUrl ? (
+                <Image source={{ uri: photoUrl }} style={styles.welcomeAvatar} />
+              ) : (
+                <View style={styles.welcomeAvatar} />
+              )}
               <View style={styles.welcomeTextWrap}>
                 <Text style={styles.welcomeTitle}>Bienvenido {firstName}</Text>
                 <Text style={styles.welcomeSubtitle}>

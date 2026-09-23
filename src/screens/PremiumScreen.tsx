@@ -1,9 +1,10 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { ComponentProps } from 'react';
+import { ComponentProps, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -58,6 +59,28 @@ export function PremiumScreen() {
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
   const { isPremium, activatePremium } = usePlayerProfile();
+  const [activating, setActivating] = useState(false);
+
+  async function handleActivatePremium() {
+    if (activating) {
+      return;
+    }
+    setActivating(true);
+    try {
+      const result = await activatePremium();
+      if (!result.ok) {
+        Alert.alert('No se pudo activar Premium', result.message);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo activar Premium. Intentá de nuevo.';
+      Alert.alert('No se pudo activar Premium', message);
+    } finally {
+      setActivating(false);
+    }
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -129,7 +152,12 @@ export function PremiumScreen() {
               </Pressable>
             </>
           ) : (
-            <Pressable style={[styles.cta, { backgroundColor: brand.header }]} onPress={activatePremium}>
+            <Pressable
+              style={[styles.cta, { backgroundColor: brand.header }]}
+              onPress={() => {
+                void handleActivatePremium();
+              }}
+            >
               <Text style={styles.ctaText}>Activar Premium</Text>
             </Pressable>
           )}
