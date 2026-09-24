@@ -22,6 +22,7 @@ import {
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { PremiumBadge } from '../components/PremiumBadge';
 import { ProfileContent } from '../components/ProfileContent';
+import { useConexiones } from '../context/ConexionesContext';
 import {
   fetchCreatedProfileKind,
   usePlayerProfile,
@@ -226,16 +227,19 @@ export function ProfileScreen() {
     role,
     currentProfile,
     isOwnProfile,
-    sendRequest,
-    hasSentRequest,
-    isConnected,
-    incomingRequestIds,
-    acceptIncomingRequest,
     isPremium,
     isBlocked,
     unblockUser,
     getRating,
   } = usePlayerProfile();
+  const {
+    sendRequest,
+    hasSentRequest,
+    isConnected,
+    hasIncomingFrom,
+    acceptIncomingRequest,
+    refresh: refreshConexiones,
+  } = useConexiones();
 
   const userId = route.params?.userId ?? OWN_PROFILE_ID;
   const ownProfile = isOwnProfile(userId);
@@ -257,6 +261,7 @@ export function ProfileScreen() {
 
       async function loadOtherProfile() {
         try {
+          await refreshConexiones();
           const loaded = await fetchPublicUserProfile(userId);
           if (isCurrent) {
             setOtherProfile(loaded ?? undefined);
@@ -276,7 +281,7 @@ export function ProfileScreen() {
       return () => {
         isCurrent = false;
       };
-    }, [ownProfile, userId]),
+    }, [ownProfile, refreshConexiones, userId]),
   );
 
   useFocusEffect(
@@ -551,9 +556,7 @@ export function ProfileScreen() {
   const displayedProfile = ownProfile ? ownProfileData : otherProfile;
   const requested = displayedProfile ? hasSentRequest(displayedProfile.id) : false;
   const connected = displayedProfile ? isConnected(displayedProfile.id) : false;
-  const incoming = displayedProfile
-    ? incomingRequestIds.includes(displayedProfile.id)
-    : false;
+  const incoming = displayedProfile ? hasIncomingFrom(displayedProfile.id) : false;
   const blocked = displayedProfile ? isBlocked(displayedProfile.id) : false;
   const rating = displayedProfile ? getRating(displayedProfile.id) : undefined;
 
@@ -724,7 +727,18 @@ export function ProfileScreen() {
                   ) : incoming ? (
                     <Pressable
                       style={[styles.requestButton, { backgroundColor: brand.header }]}
-                      onPress={() => acceptIncomingRequest(displayedProfile.id)}
+                      onPress={() => {
+                        void acceptIncomingRequest(displayedProfile.id).then(
+                          (result) => {
+                            if (!result.ok) {
+                              Alert.alert(
+                                'No se pudo aceptar la solicitud',
+                                result.message,
+                              );
+                            }
+                          },
+                        );
+                      }}
                     >
                       <FontAwesome5 name="check" size={14} color="#FFFFFF" />
                       <Text style={styles.requestButtonText}>Aceptar solicitud</Text>
@@ -737,7 +751,16 @@ export function ProfileScreen() {
                   ) : (
                     <Pressable
                       style={[styles.requestButton, { backgroundColor: brand.header }]}
-                      onPress={() => sendRequest(displayedProfile.id)}
+                      onPress={() => {
+                        void sendRequest(displayedProfile.id).then((result) => {
+                          if (!result.ok) {
+                            Alert.alert(
+                              'No se pudo enviar la solicitud',
+                              result.message,
+                            );
+                          }
+                        });
+                      }}
                     >
                       <FontAwesome5 name="user-plus" size={14} color="#FFFFFF" />
                       <Text style={styles.requestButtonText}>

@@ -4,6 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import {
+  Alert,
   Image,
   Platform,
   Pressable,
@@ -15,7 +16,7 @@ import {
 } from 'react-native';
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
-import { usePlayerProfile } from '../context/PlayerProfileContext';
+import { useConexiones } from '../context/ConexionesContext';
 import { getProfileRoleLabel, UserProfile } from '../data/playerProfiles';
 import { fetchPublicUserProfile } from '../lib/directory';
 import { AuthStackParamList } from '../navigation/types';
@@ -26,30 +27,61 @@ export function ConnectionRequestsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
-  const {
-    incomingRequestIds,
-    acceptIncomingRequest,
-    rejectIncomingRequest,
-  } = usePlayerProfile();
+  const { refresh, acceptIncomingRequest, rejectIncomingRequest } = useConexiones();
   const [requests, setRequests] = useState<UserProfile[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      void Promise.all(
-        incomingRequestIds.map((id) => fetchPublicUserProfile(id)),
-      ).then((profiles) => {
+
+      async function loadRequests() {
+        const { myId, rows } = await refresh();
+        if (!myId) {
+          if (!cancelled) {
+            setRequests([]);
+          }
+          return;
+        }
+
+        const ids = rows
+          .filter(
+            (row) => row.estado === 'pendiente' && row.fk_receptor === myId,
+          )
+          .map((row) => row.fk_solicitante);
+        const profiles = await Promise.all(
+          ids.map((id) => fetchPublicUserProfile(id)),
+        );
         if (!cancelled) {
           setRequests(
             profiles.filter((profile): profile is UserProfile => Boolean(profile)),
           );
         }
-      });
+      }
+
+      void loadRequests();
       return () => {
         cancelled = true;
       };
-    }, [incomingRequestIds]),
+    }, [refresh]),
   );
+
+  async function handleAccept(userId: string) {
+    const result = await acceptIncomingRequest(userId);
+    if (!result.ok) {
+      Alert.alert('No se pudo aceptar la solicitud', result.message);
+      return;
+    }
+    setRequests((current) => current.filter((profile) => profile.id !== userId));
+  }
+
+  async function handleReject(userId: string) {
+    const result = await rejectIncomingRequest(userId);
+    if (!result.ok) {
+      Alert.alert('No se pudo rechazar la solicitud', result.message);
+      return;
+    }
+    setRequests((current) => current.filter((profile) => profile.id !== userId));
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -104,13 +136,17 @@ export function ConnectionRequestsScreen() {
                 </View>
                 <Pressable
                   style={styles.acceptButton}
-                  onPress={() => acceptIncomingRequest(profile.id)}
+                  onPress={() => {
+                    void handleAccept(profile.id);
+                  }}
                 >
                   <FontAwesome5 name="check" size={14} color="#FFFFFF" />
                 </Pressable>
                 <Pressable
                   style={styles.rejectButton}
-                  onPress={() => rejectIncomingRequest(profile.id)}
+                  onPress={() => {
+                    void handleReject(profile.id);
+                  }}
                 >
                   <FontAwesome5 name="times" size={14} color="#FFFFFF" />
                 </Pressable>

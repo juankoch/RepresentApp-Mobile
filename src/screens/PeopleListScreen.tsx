@@ -4,6 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -15,7 +16,7 @@ import {
 
 import { PersonCard } from '../components/PersonCard';
 import { PlayerTabBar } from '../components/PlayerTabBar';
-import { usePlayerProfile } from '../context/PlayerProfileContext';
+import { useConexiones } from '../context/ConexionesContext';
 import {
   DirectoryPerson,
   fetchDirectoryAgents,
@@ -30,7 +31,7 @@ export function PeopleListScreen() {
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'PeopleList'>>();
-  const { sendRequest, hasSentRequest, isConnected } = usePlayerProfile();
+  const { sendRequest, hasSentRequest, isConnected, refresh } = useConexiones();
   const kind = route.params.kind;
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
 
@@ -39,6 +40,7 @@ export function PeopleListScreen() {
       let cancelled = false;
 
       async function loadPeople() {
+        await refresh();
         const next =
           kind === 'player'
             ? await fetchDirectoryPlayers().catch(() => [] as DirectoryPerson[])
@@ -52,7 +54,7 @@ export function PeopleListScreen() {
       return () => {
         cancelled = true;
       };
-    }, [kind]),
+    }, [kind, refresh]),
   );
 
   return (
@@ -100,7 +102,13 @@ export function PeopleListScreen() {
                 pending={hasSentRequest(profile.id)}
                 connected={isConnected(profile.id)}
                 onPress={() => navigation.push('Profile', { userId: profile.id })}
-                onRequest={() => sendRequest(profile.id)}
+                onRequest={() => {
+                  void sendRequest(profile.id).then((result) => {
+                    if (!result.ok) {
+                      Alert.alert('No se pudo enviar la solicitud', result.message);
+                    }
+                  });
+                }}
               />
             ))
           )}

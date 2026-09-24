@@ -15,9 +15,10 @@ import {
 } from 'react-native';
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
-import { usePlayerProfile } from '../context/PlayerProfileContext';
+import { useConexiones } from '../context/ConexionesContext';
 import { getProfileRoleLabel, UserProfile } from '../data/playerProfiles';
 import { fetchPublicUserProfile } from '../lib/directory';
+import { otherUserId } from '../lib/conexiones';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -26,25 +27,40 @@ export function ConnectionsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
-  const { connectedIds } = usePlayerProfile();
+  const { refresh } = useConexiones();
   const [connections, setConnections] = useState<UserProfile[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      void Promise.all(connectedIds.map((id) => fetchPublicUserProfile(id))).then(
-        (profiles) => {
+
+      async function loadConnections() {
+        const { myId, rows } = await refresh();
+        if (!myId) {
           if (!cancelled) {
-            setConnections(
-              profiles.filter((profile): profile is UserProfile => Boolean(profile)),
-            );
+            setConnections([]);
           }
-        },
-      );
+          return;
+        }
+
+        const ids = rows
+          .filter((row) => row.estado === 'aceptada')
+          .map((row) => otherUserId(row, myId));
+        const profiles = await Promise.all(
+          ids.map((id) => fetchPublicUserProfile(id)),
+        );
+        if (!cancelled) {
+          setConnections(
+            profiles.filter((profile): profile is UserProfile => Boolean(profile)),
+          );
+        }
+      }
+
+      void loadConnections();
       return () => {
         cancelled = true;
       };
-    }, [connectedIds]),
+    }, [refresh]),
   );
 
   return (
@@ -195,3 +211,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

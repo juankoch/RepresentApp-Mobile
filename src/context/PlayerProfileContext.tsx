@@ -30,14 +30,6 @@ type PlayerProfileContextValue = {
   getProfile: (userId: string) => UserProfile | undefined;
   isOwnProfile: (userId?: string) => boolean;
   updateProfile: (updates: Partial<UserProfile>) => void;
-  sentRequestIds: string[];
-  incomingRequestIds: string[];
-  connectedIds: string[];
-  sendRequest: (userId: string) => void;
-  hasSentRequest: (userId: string) => boolean;
-  acceptIncomingRequest: (userId: string) => void;
-  rejectIncomingRequest: (userId: string) => void;
-  isConnected: (userId: string) => boolean;
   isPremium: boolean;
   activatePremium: () => Promise<{ ok: true } | { ok: false; message: string }>;
   ratings: Record<string, UserRating>;
@@ -264,8 +256,6 @@ function emptySessionState(role: UserRole) {
     currentProfile: createEmptySessionProfile(
       role === 'agent' ? 'agent' : 'player',
     ),
-    incomingRequestIds: [] as string[],
-    connectedIds: [] as string[],
   };
 }
 
@@ -274,9 +264,6 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
   const [currentProfile, setCurrentProfile] = useState<UserProfile>(() =>
     createEmptySessionProfile('player'),
   );
-  const [sentRequestIds, setSentRequestIds] = useState<string[]>([]);
-  const [incomingRequestIds, setIncomingRequestIds] = useState<string[]>([]);
-  const [connectedIds, setConnectedIds] = useState<string[]>([]);
   const [isPremium, setIsPremium] = useState(false);
   const [ratings, setRatings] = useState<Record<string, UserRating>>({});
   const [reportedIds, setReportedIds] = useState<string[]>([]);
@@ -305,9 +292,6 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
       photo: profileUpdates?.photo,
       photoUrl: profileUpdates?.photoUrl,
     });
-    setSentRequestIds([]);
-    setIncomingRequestIds(next.incomingRequestIds);
-    setConnectedIds(next.connectedIds);
     setIsPremium(sessionIsPremium === true);
     setRatings({});
     setReportedIds([]);
@@ -331,39 +315,6 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
           stats: updates.stats ?? current.stats,
         }));
       },
-      sentRequestIds,
-      incomingRequestIds,
-      connectedIds,
-      sendRequest: (userId) => {
-        if (isOwnProfileId(userId) || blockedIds.includes(userId)) {
-          return;
-        }
-        if (connectedIds.includes(userId) || incomingRequestIds.includes(userId)) {
-          return;
-        }
-        setSentRequestIds((current) =>
-          current.includes(userId) ? current : [...current, userId],
-        );
-      },
-      hasSentRequest: (userId) => sentRequestIds.includes(userId),
-      acceptIncomingRequest: (userId) => {
-        if (blockedIds.includes(userId)) {
-          return;
-        }
-        setIncomingRequestIds((current) =>
-          current.filter((id) => id !== userId),
-        );
-        setSentRequestIds((current) => current.filter((id) => id !== userId));
-        setConnectedIds((current) =>
-          current.includes(userId) ? current : [...current, userId],
-        );
-      },
-      rejectIncomingRequest: (userId) => {
-        setIncomingRequestIds((current) =>
-          current.filter((id) => id !== userId),
-        );
-      },
-      isConnected: (userId) => connectedIds.includes(userId),
       isPremium,
       activatePremium: async () => {
         const result = await persistAuthenticatedUserPremium();
@@ -420,15 +371,12 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
     }),
     [
       blockedIds,
-      connectedIds,
       currentProfile,
       highlights,
-      incomingRequestIds,
       isPremium,
       ratings,
       reportedIds,
       role,
-      sentRequestIds,
     ],
   );
 
