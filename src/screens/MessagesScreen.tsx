@@ -1,9 +1,10 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import {
+  Alert,
   Image,
   Platform,
   Pressable,
@@ -17,40 +18,90 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { SwipeableRow } from '../components/SwipeableRow';
-import { usePlayerMessages } from '../context/PlayerMessagesContext';
+import { Conversation } from '../data/playerMessages';
+import { getProfileRoleLabel } from '../data/playerProfiles';
+import { fetchPublicUserProfile } from '../lib/directory';
+import { deleteConversation, getUserConversations } from '../lib/mensajes';
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
 import { matchesSearch } from '../utils/search';
 
-type MessagesTab = 'all' | 'requests';
-
 export function MessagesScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
-  const route = useRoute<RouteProp<AuthStackParamList, 'Messages'>>();
-  const { conversations, requests, deleteConversation, acceptRequest, rejectRequest } =
-    usePlayerMessages();
-  const [tab, setTab] = useState<MessagesTab>(route.params?.initialTab ?? 'all');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [openRowId, setOpenRowId] = useState<string | null>(null);
 
   const visibleConversations = conversations.filter((conversation) =>
     matchesSearch(conversation.name, searchQuery),
   );
-  const visibleRequests = requests.filter(
-    (request) =>
-      matchesSearch(request.name, searchQuery) ||
-      matchesSearch(request.subtitle, searchQuery),
-  );
+
+  const loadConversations = useCallback(async () => {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      setConversations([]);
+      Alert.alert('No se pudieron cargar los mensajes', 'No hay un usuario autenticado.');
+      return;
+    }
+
+    const result = await getUserConversations(userData.user.id);
+    if (!result.ok) {
+      setConversations([]);
+      Alert.alert('No se pudieron cargar los mensajes', result.message);
+      return;
+    }
+
+    const hydrated = await Promise.all(
+      result.data.map(async (item) => {
+        const profile = item.profileId
+          ? await fetchPublicUserProfile(item.profileId)
+          : null;
+        return {
+          id: item.id,
+          profileId: item.profileId,
+          name: profile?.name || 'Sin datos',
+          role: profile ? getProfileRoleLabel(profile.kind) : '',
+          preview: item.preview,
+          time: item.time,
+          unread: item.unread,
+          avatarUrl: profile?.photoUrl,
+          messages: [],
+        } satisfies Conversation;
+      }),
+    );
+
+    setConversations(hydrated);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      setTab(route.params?.initialTab ?? 'all');
       setOpenRowId(null);
-    }, [route.params?.initialTab]),
+      void loadConversations();
+    }, [loadConversations]),
   );
+
+  async function handleDelete(conversationId: string) {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      Alert.alert('No se pudo eliminar la conversación', 'No hay un usuario autenticado.');
+      return;
+    }
+
+    const result = await deleteConversation(conversationId, userData.user.id);
+    if (!result.ok) {
+      Alert.alert('No se pudo eliminar la conversación', result.message);
+      return;
+    }
+
+    setConversations((current) =>
+      current.filter((conversation) => conversation.id !== conversationId),
+    );
+    setOpenRowId(null);
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -73,26 +124,6 @@ export function MessagesScreen() {
           </Pressable>
           <Text style={styles.headerTitle}>Mensajes</Text>
         </View>
-        <View style={styles.tabs}>
-          <Pressable style={styles.tab} onPress={() => { setTab('all'); setOpenRowId(null); }}>
-            <Text style={[styles.tabLabel, { color: brand.muted }, tab === 'all' && styles.tabLabelActive]}>
-              Todas
-            </Text>
-            {tab === 'all' ? <View style={[styles.tabUnderline, { backgroundColor: brand.accent }]} /> : <View style={styles.tabSpacer} />}
-          </Pressable>
-          <Pressable style={styles.tab} onPress={() => { setTab('requests'); setOpenRowId(null); }}>
-            <Text
-              style={[styles.tabLabel, { color: brand.muted }, tab === 'requests' && styles.tabLabelActive]}
-            >
-              Solicitudes
-            </Text>
-            {tab === 'requests' ? (
-              <View style={[styles.tabUnderline, { backgroundColor: brand.accent }]} />
-            ) : (
-              <View style={styles.tabSpacer} />
-            )}
-          </Pressable>
-        </View>
       </View>
 
       <View style={styles.panel}>
@@ -100,9 +131,7 @@ export function MessagesScreen() {
           <FontAwesome5 name="search" size={14} color="#8A8A8A" />
           <TextInput
             style={styles.searchInput}
-            placeholder={
-              tab === 'all' ? 'Buscar conversaciones...' : 'Buscar solicitudes...'
-            }
+            placeholder="Buscar conversaciones..."
             placeholderTextColor="#8A8A8A"
             value={searchQuery}
             onChangeText={(text) => {
@@ -113,121 +142,68 @@ export function MessagesScreen() {
           />
         </View>
 
-        {tab === 'all' ? (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            onScrollBeginDrag={() => setOpenRowId(null)}
-          >
-            {visibleConversations.length === 0 ? (
-              <Text style={styles.emptyText}>
-                {searchQuery.trim()
-                  ? 'No encontramos conversaciones para esa búsqueda.'
-                  : 'Todavía no tenés conversaciones.'}
-              </Text>
-            ) : (
-              visibleConversations.map((conversation) => (
-                <SwipeableRow
-                  key={conversation.id}
-                  isOpen={openRowId === conversation.id}
-                  onOpen={() => setOpenRowId(conversation.id)}
-                  onClose={() =>
-                    setOpenRowId((current) =>
-                      current === conversation.id ? null : current,
-                    )
-                  }
-                  onDelete={() => {
-                    deleteConversation(conversation.id);
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          onScrollBeginDrag={() => setOpenRowId(null)}
+        >
+          {visibleConversations.length === 0 ? (
+            <Text style={styles.emptyText}>
+              {searchQuery.trim()
+                ? 'No encontramos conversaciones para esa búsqueda.'
+                : 'Todavía no tenés conversaciones.'}
+            </Text>
+          ) : (
+            visibleConversations.map((conversation) => (
+              <SwipeableRow
+                key={conversation.id}
+                isOpen={openRowId === conversation.id}
+                onOpen={() => setOpenRowId(conversation.id)}
+                onClose={() =>
+                  setOpenRowId((current) =>
+                    current === conversation.id ? null : current,
+                  )
+                }
+                onDelete={() => {
+                  void handleDelete(conversation.id);
+                }}
+              >
+                <Pressable
+                  style={styles.conversationRow}
+                  onPress={() => {
                     setOpenRowId(null);
+                    navigation.navigate('Chat', {
+                      conversationId: conversation.id,
+                    });
                   }}
                 >
-                  <Pressable
-                    style={styles.conversationRow}
-                    onPress={() => {
-                      setOpenRowId(null);
-                      navigation.navigate('Chat', {
-                        conversationId: conversation.id,
-                      });
-                    }}
-                  >
-                    {conversation.avatarUrl ? (
-                      <Image source={{ uri: conversation.avatarUrl }} style={styles.avatar} />
-                    ) : conversation.avatar ? (
-                      <Image source={conversation.avatar} style={styles.avatar} />
-                    ) : (
-                      <View style={styles.avatar} />
-                    )}
-                    <View style={styles.conversationBody}>
-                      <View style={styles.conversationTop}>
-                        <Text style={styles.conversationName} numberOfLines={1}>
-                          {conversation.name}
-                        </Text>
-                        <Text style={styles.conversationTime}>{conversation.time}</Text>
-                      </View>
-                      <View style={styles.conversationBottom}>
-                        <Text style={styles.conversationPreview} numberOfLines={1}>
-                          {conversation.preview}
-                        </Text>
-                        {conversation.unread > 0 ? (
-                          <View style={styles.unreadBadge}>
-                            <Text style={styles.unreadText}>{conversation.unread}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    </View>
-                  </Pressable>
-                </SwipeableRow>
-              ))
-            )}
-          </ScrollView>
-        ) : (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.requestsList}
-          >
-            {visibleRequests.length === 0 ? (
-              <Text style={styles.emptyText}>
-                {searchQuery.trim()
-                  ? 'No encontramos solicitudes para esa búsqueda.'
-                  : 'No tenés solicitudes pendientes.'}
-              </Text>
-            ) : (
-              visibleRequests.map((request) => (
-                <View key={request.id} style={styles.requestRow}>
-                  {request.avatarUrl ? (
-                    <Image source={{ uri: request.avatarUrl }} style={styles.avatar} />
-                  ) : request.avatar ? (
-                    <Image source={request.avatar} style={styles.avatar} />
+                  {conversation.avatarUrl ? (
+                    <Image source={{ uri: conversation.avatarUrl }} style={styles.avatar} />
                   ) : (
                     <View style={styles.avatar} />
                   )}
-                  <View style={styles.requestBody}>
-                    <Text style={styles.conversationName}>{request.name}</Text>
-                    <Text style={styles.requestRole}>{request.role}</Text>
-                    <Text style={styles.requestSubtitle}>{request.subtitle}</Text>
+                  <View style={styles.conversationBody}>
+                    <View style={styles.conversationTop}>
+                      <Text style={styles.conversationName} numberOfLines={1}>
+                        {conversation.name}
+                      </Text>
+                      <Text style={styles.conversationTime}>{conversation.time}</Text>
+                    </View>
+                    <View style={styles.conversationBottom}>
+                      <Text style={styles.conversationPreview} numberOfLines={1}>
+                        {conversation.preview}
+                      </Text>
+                      {conversation.unread > 0 ? (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadText}>{conversation.unread}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
-                  <Pressable
-                    style={styles.acceptButton}
-                    onPress={() => acceptRequest(request.id)}
-                  >
-                    <FontAwesome5 name="check" size={14} color="#FFFFFF" />
-                  </Pressable>
-                  <Pressable
-                    style={styles.rejectButton}
-                    onPress={() => rejectRequest(request.id)}
-                  >
-                    <FontAwesome5 name="times" size={14} color="#FFFFFF" />
-                  </Pressable>
-                </View>
-              ))
-            )}
-            <View style={styles.infoBox}>
-              <FontAwesome5 name="user-plus" size={16} color={colors.homeHeader} />
-              <Text style={styles.infoText}>
-                Aceptá solicitudes para poder empezar a chatear.
-              </Text>
-            </View>
-          </ScrollView>
-        )}
+                </Pressable>
+              </SwipeableRow>
+            ))
+          )}
+        </ScrollView>
       </View>
 
       <PlayerTabBar activeTab="messages" />
@@ -260,32 +236,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 28,
     fontWeight: '800',
-  },
-  tabs: {
-    flexDirection: 'row',
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  tabLabel: {
-    color: colors.homeMuted,
-    fontSize: 15,
-    fontWeight: '600',
-    paddingBottom: 8,
-  },
-  tabLabelActive: {
-    color: '#FFFFFF',
-  },
-  tabUnderline: {
-    width: '100%',
-    height: 3,
-    backgroundColor: colors.homeAccent,
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
-  },
-  tabSpacer: {
-    height: 3,
   },
   panel: {
     flex: 1,
@@ -373,60 +323,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '700',
-  },
-  requestsList: {
-    paddingBottom: 20,
-  },
-  requestRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
-  },
-  requestBody: {
-    flex: 1,
-  },
-  requestRole: {
-    marginTop: 2,
-    color: '#4A4A4A',
-    fontSize: 12,
-  },
-  requestSubtitle: {
-    marginTop: 1,
-    color: '#8A8A8A',
-    fontSize: 12,
-  },
-  acceptButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#2E8B57',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rejectButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#E53935',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginHorizontal: 16,
-    marginTop: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    backgroundColor: '#F3F6F4',
-    borderRadius: 16,
-  },
-  infoText: {
-    flex: 1,
-    color: '#4A4A4A',
-    fontSize: 13,
   },
 });
