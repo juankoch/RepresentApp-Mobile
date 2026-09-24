@@ -4,6 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Image,
   Platform,
@@ -18,6 +19,7 @@ import {
 import { PersonCard } from '../components/PersonCard';
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { PremiumBadge } from '../components/PremiumBadge';
+import { useConexiones } from '../context/ConexionesContext';
 import {
   fetchAuthenticatedUserIdentity,
   fetchAuthenticatedUserPremium,
@@ -72,15 +74,14 @@ function firstNameFrom(fullName: string) {
 export function HomeScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const { role, currentProfile, updateProfile } = usePlayerProfile();
   const {
     sendRequest,
     hasSentRequest,
     isConnected,
-    incomingRequestIds,
-    role,
-    currentProfile,
-    updateProfile,
-  } = usePlayerProfile();
+    incomingCount,
+    refresh: refreshConexiones,
+  } = useConexiones();
   const { publishedTrials } = usePlayerTrials();
   const brand = useBrandColors();
   const isAgent = role === 'agent';
@@ -141,12 +142,21 @@ export function HomeScreen() {
       void loadIdentity();
       void loadPremium();
       void loadDirectory();
+      void refreshConexiones();
 
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [refreshConexiones]),
   );
+
+  function requestConnection(userId: string) {
+    void sendRequest(userId).then((result) => {
+      if (!result.ok) {
+        Alert.alert('No se pudo enviar la solicitud', result.message);
+      }
+    });
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -258,10 +268,10 @@ export function HomeScreen() {
                       />
                     </View>
                     {item.title === 'Solicitudes de conexión' &&
-                    incomingRequestIds.length > 0 ? (
+                    incomingCount > 0 ? (
                       <View style={styles.quickBadge}>
                         <Text style={styles.badgeText}>
-                          {incomingRequestIds.length}
+                          {incomingCount}
                         </Text>
                       </View>
                     ) : null}
@@ -362,7 +372,7 @@ export function HomeScreen() {
                       pending={hasSentRequest(player.id)}
                       connected={isConnected(player.id)}
                       onPress={() => navigation.push('Profile', { userId: player.id })}
-                      onRequest={() => sendRequest(player.id)}
+                      onRequest={() => requestConnection(player.id)}
                     />
                   ))
                 )}
@@ -440,7 +450,7 @@ export function HomeScreen() {
                       pending={hasSentRequest(agent.id)}
                       connected={isConnected(agent.id)}
                       onPress={() => navigation.push('Profile', { userId: agent.id })}
-                      onRequest={() => sendRequest(agent.id)}
+                      onRequest={() => requestConnection(agent.id)}
                     />
                   ))
                 )}
@@ -477,7 +487,7 @@ export function HomeScreen() {
                       pending={hasSentRequest(player.id)}
                       connected={isConnected(player.id)}
                       onPress={() => navigation.push('Profile', { userId: player.id })}
-                      onRequest={() => sendRequest(player.id)}
+                      onRequest={() => requestConnection(player.id)}
                     />
                   ))
                 )}

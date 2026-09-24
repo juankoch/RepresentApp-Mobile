@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+import { ConexionesProvider } from '../context/ConexionesContext';
 import { PlayerMessagesProvider } from '../context/PlayerMessagesContext';
 import { PlayerProfileProvider } from '../context/PlayerProfileContext';
 import { PlayerTrialsProvider } from '../context/PlayerTrialsContext';
@@ -33,6 +34,7 @@ const Stack = createNativeStackNavigator<AuthStackParamList>();
 export function AuthNavigator() {
   return (
     <PlayerProfileProvider>
+      <ConexionesProvider>
       <PlayerTrialsProvider>
         <PlayerMessagesProvider>
           <Stack.Navigator
@@ -71,6 +73,7 @@ export function AuthNavigator() {
           </Stack.Navigator>
         </PlayerMessagesProvider>
       </PlayerTrialsProvider>
+      </ConexionesProvider>
     </PlayerProfileProvider>
   );
 }
