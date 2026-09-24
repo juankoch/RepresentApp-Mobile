@@ -29,6 +29,7 @@ import {
 } from '../context/PlayerProfileContext';
 import { OWN_PROFILE_ID, ProfileField, UserProfile } from '../data/playerProfiles';
 import { fetchPublicUserProfile } from '../lib/directory';
+import { getOrCreateConversation } from '../lib/mensajes';
 import { piernaHabilToDisplay } from '../lib/piernaHabil';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
@@ -560,6 +561,32 @@ export function ProfileScreen() {
   const blocked = displayedProfile ? isBlocked(displayedProfile.id) : false;
   const rating = displayedProfile ? getRating(displayedProfile.id) : undefined;
 
+  async function openChatWith(otherUserId: string) {
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData.user) {
+        Alert.alert('No se pudo abrir el chat', 'No hay un usuario autenticado.');
+        return;
+      }
+
+      const result = await getOrCreateConversation(userData.user.id, otherUserId);
+      if (!result.ok) {
+        const needsConnection = /conexión aceptada|conect/i.test(result.message);
+        Alert.alert(
+          'No se pudo abrir el chat',
+          needsConnection
+            ? 'Tenés que estar conectado con este usuario para poder chatear.'
+            : result.message,
+        );
+        return;
+      }
+
+      navigation.navigate('Chat', { conversationId: result.data });
+    } catch (error) {
+      Alert.alert('No se pudo abrir el chat', errorMessage(error));
+    }
+  }
+
   if (!displayedProfile) {
     if (!ownProfile && loadingOther) {
       return (
@@ -771,11 +798,7 @@ export function ProfileScreen() {
                   <Pressable
                     style={[styles.messageButton, { backgroundColor: brand.header }]}
                     onPress={() => {
-                      if (displayedProfile.conversationId) {
-                        navigation.navigate('Chat', {
-                          conversationId: displayedProfile.conversationId,
-                        });
-                      }
+                      void openChatWith(displayedProfile.id);
                     }}
                   >
                     <FontAwesome5 name="paper-plane" size={14} color="#FFFFFF" />

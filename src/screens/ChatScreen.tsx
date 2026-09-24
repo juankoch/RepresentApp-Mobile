@@ -1,9 +1,10 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -17,7 +18,16 @@ import {
 } from 'react-native';
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
-import { usePlayerMessages } from '../context/PlayerMessagesContext';
+import { ChatMessage } from '../data/playerMessages';
+import { getProfileRoleLabel } from '../data/playerProfiles';
+import { fetchPublicUserProfile } from '../lib/directory';
+import {
+  getConversationMessages,
+  getUserConversations,
+  markConversationAsRead,
+  sendMessage,
+} from '../lib/mensajes';
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -27,13 +37,84 @@ export function ChatScreen() {
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'Chat'>>();
-  const { conversations, sendMessage } = usePlayerMessages();
+  const conversationId = route.params.conversationId;
   const [draft, setDraft] = useState('');
-  const conversation = conversations.find(
-    (item) => item.id === route.params.conversationId,
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [unavailable, setUnavailable] = useState(false);
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
+  const [profileId, setProfileId] = useState<string | undefined>(undefined);
+
+  const loadChat = useCallback(async () => {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      setMessages([]);
+      setUnavailable(true);
+      Alert.alert('No se pudo abrir el chat', 'No hay un usuario autenticado.');
+      return;
+    }
+
+    const userId = userData.user.id;
+    const result = await getConversationMessages(conversationId, userId);
+    if (!result.ok) {
+      setMessages([]);
+      setUnavailable(true);
+      Alert.alert('No se pudieron cargar los mensajes', result.message);
+      return;
+    }
+
+    setUnavailable(false);
+    setMessages(result.data);
+
+    void markConversationAsRead(conversationId, userId);
+
+    const inbox = await getUserConversations(userId);
+    if (!inbox.ok) {
+      return;
+    }
+    const item = inbox.data.find((conversation) => conversation.id === conversationId);
+    if (!item?.profileId) {
+      return;
+    }
+    setProfileId(item.profileId);
+    const profile = await fetchPublicUserProfile(item.profileId);
+    if (profile) {
+      setName(profile.name);
+      setRole(getProfileRoleLabel(profile.kind));
+      setAvatarUrl(profile.photoUrl);
+    }
+  }, [conversationId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadChat();
+    }, [loadChat]),
   );
 
-  if (!conversation) {
+  async function handleSend() {
+    const text = draft.trim();
+    if (!text) {
+      return;
+    }
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      Alert.alert('No se pudo enviar el mensaje', 'No hay un usuario autenticado.');
+      return;
+    }
+
+    const result = await sendMessage(conversationId, userData.user.id, text);
+    if (!result.ok) {
+      Alert.alert('No se pudo enviar el mensaje', result.message);
+      return;
+    }
+
+    setMessages((current) => [...current, result.data]);
+    setDraft('');
+  }
+
+  if (unavailable) {
     return (
       <View style={[styles.root, { backgroundColor: brand.header }]}>
         <StatusBar style="light" />
@@ -71,21 +152,19 @@ export function ChatScreen() {
         <Pressable
           style={styles.headerCenter}
           onPress={() => {
-            if (conversation.profileId) {
-              navigation.push('Profile', { userId: conversation.profileId });
+            if (profileId) {
+              navigation.push('Profile', { userId: profileId });
             }
           }}
         >
-          {conversation.avatarUrl ? (
-            <Image source={{ uri: conversation.avatarUrl }} style={styles.headerAvatar} />
-          ) : conversation.avatar ? (
-            <Image source={conversation.avatar} style={styles.headerAvatar} />
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.headerAvatar} />
           ) : (
             <View style={styles.headerAvatar} />
           )}
           <View>
-            <Text style={styles.headerName}>{conversation.name}</Text>
-            <Text style={styles.headerRole}>{conversation.role}</Text>
+            <Text style={styles.headerName}>{name}</Text>
+            <Text style={styles.headerRole}>{role}</Text>
           </View>
         </Pressable>
         <View style={styles.headerSide}>
@@ -104,7 +183,7 @@ export function ChatScreen() {
           <View style={styles.dayPill}>
             <Text style={styles.dayText}>Hoy</Text>
           </View>
-          {conversation.messages.map((message) => (
+          {messages.map((message) => (
             <View
               key={message.id}
               style={[
@@ -150,8 +229,7 @@ export function ChatScreen() {
             <Pressable
               style={[styles.sendButton, { backgroundColor: brand.header }]}
             onPress={() => {
-              sendMessage(conversation.id, draft);
-              setDraft('');
+              void handleSend();
             }}
           >
             <FontAwesome5 name="paper-plane" size={14} color="#FFFFFF" />
