@@ -21,6 +21,7 @@ import { PeopleListScreen } from '../screens/PeopleListScreen';
 import { PremiumScreen } from '../screens/PremiumScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { RateUserScreen } from '../screens/RateUserScreen';
+import { RepresentedPlayersScreen } from '../screens/RepresentedPlayersScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { ReportUserScreen } from '../screens/ReportUserScreen';
 import { SearchScreen } from '../screens/SearchScreen';
@@ -65,6 +66,10 @@ export function AuthNavigator() {
             />
             <Stack.Screen name="Connections" component={ConnectionsScreen} />
             <Stack.Screen name="PeopleList" component={PeopleListScreen} />
+            <Stack.Screen
+              name="RepresentedPlayers"
+              component={RepresentedPlayersScreen}
+            />
             <Stack.Screen name="Premium" component={PremiumScreen} />
             <Stack.Screen name="UserOptions" component={UserOptionsScreen} />
             <Stack.Screen name="RateUser" component={RateUserScreen} />

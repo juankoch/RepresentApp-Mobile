@@ -248,6 +248,7 @@ export function ProfileScreen() {
     accept: acceptRepresentation,
     refresh: refreshRepresentaciones,
     activeRepresentation,
+    getRepresentedPlayers,
   } = useRepresentaciones();
 
   const userId = route.params?.userId ?? OWN_PROFILE_ID;
@@ -277,11 +278,28 @@ export function ProfileScreen() {
           const sessionUserId = userData.user?.id?.trim() || null;
           await Promise.all([refreshConexiones(), refreshRepresentaciones()]);
           const loaded = await fetchPublicUserProfile(userId);
+          let nextProfile = loaded ?? undefined;
+          if (nextProfile?.kind === 'agent' && nextProfile.id && nextProfile.id !== 'me') {
+            try {
+              const rows = await getRepresentedPlayers(nextProfile.id);
+              const count = rows.filter((row) => row.estado === 'aceptada').length;
+              nextProfile = {
+                ...nextProfile,
+                stats: nextProfile.stats.map((stat) =>
+                  stat.label === 'Jugadores'
+                    ? { ...stat, value: String(count) }
+                    : stat,
+                ),
+              };
+            } catch {
+              // Keep the placeholder if the count cannot be loaded.
+            }
+          }
           if (isCurrent) {
             setAuthenticatedUserId(
               sessionUserId && sessionUserId !== 'me' ? sessionUserId : null,
             );
-            setOtherProfile(loaded ?? undefined);
+            setOtherProfile(nextProfile);
           }
         } catch {
           if (isCurrent) {
@@ -298,7 +316,13 @@ export function ProfileScreen() {
       return () => {
         isCurrent = false;
       };
-    }, [ownProfile, refreshConexiones, refreshRepresentaciones, userId]),
+    }, [
+      getRepresentedPlayers,
+      ownProfile,
+      refreshConexiones,
+      refreshRepresentaciones,
+      userId,
+    ]),
   );
 
   useFocusEffect(
@@ -329,6 +353,9 @@ export function ProfileScreen() {
           const user = userData.user;
           if (!user) {
             return;
+          }
+          if (isCurrent) {
+            setAuthenticatedUserId(user.id !== 'me' ? user.id : null);
           }
 
           const { kind: createdKind, error: kindError } =
@@ -543,7 +570,7 @@ export function ProfileScreen() {
           }
 
           setMissingPlayerProfile(playerProfileMissing);
-          setOwnProfileData({
+          let nextOwnProfile: UserProfile = {
             ...emptyOwnProfile(kind),
             kind,
             name: valueOrPlaceholder(fullName),
@@ -554,7 +581,27 @@ export function ProfileScreen() {
             birthDate,
             fields,
             about,
-          });
+          };
+          if (kind === 'agent') {
+            try {
+              const rows = await getRepresentedPlayers(user.id);
+              const count = rows.filter((row) => row.estado === 'aceptada').length;
+              nextOwnProfile = {
+                ...nextOwnProfile,
+                stats: nextOwnProfile.stats.map((stat) =>
+                  stat.label === 'Jugadores'
+                    ? { ...stat, value: String(count) }
+                    : stat,
+                ),
+              };
+            } catch {
+              // Keep the placeholder if the count cannot be loaded.
+            }
+          }
+          if (!isCurrent) {
+            return;
+          }
+          setOwnProfileData(nextOwnProfile);
         } catch (error) {
           if (isCurrent) {
             Alert.alert('No pudimos cargar tu perfil', errorMessage(error));
@@ -567,7 +614,14 @@ export function ProfileScreen() {
       return () => {
         isCurrent = false;
       };
-    }, [currentProfile.about, currentProfile.email, currentProfile.name, ownProfile, role]),
+    }, [
+      currentProfile.about,
+      currentProfile.email,
+      currentProfile.name,
+      getRepresentedPlayers,
+      ownProfile,
+      role,
+    ]),
   );
 
   const displayedProfile = ownProfile ? ownProfileData : otherProfile;
@@ -704,6 +758,22 @@ export function ProfileScreen() {
         >
           <ProfileContent
             profile={displayedProfile}
+            onStatPress={
+              displayedProfile.kind === 'agent'
+                ? (stat) => {
+                    if (stat.label !== 'Jugadores') {
+                      return;
+                    }
+                    const representativeId = ownProfile
+                      ? authenticatedUserId
+                      : displayedProfile.id;
+                    if (!representativeId || representativeId === 'me') {
+                      return;
+                    }
+                    navigation.push('RepresentedPlayers', { representativeId });
+                  }
+                : undefined
+            }
             photoBadge={
               ownProfile ? (
                 <Pressable

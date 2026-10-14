@@ -1,8 +1,8 @@
 import { FontAwesome5 } from '@expo/vector-icons';
 import { ReactNode } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { UserProfile } from '../data/playerProfiles';
+import { ProfileStat, UserProfile } from '../data/playerProfiles';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
 
@@ -11,6 +11,7 @@ type ProfileContentProps = {
   photoBadge?: ReactNode;
   nameAccessory?: ReactNode;
   footer?: ReactNode;
+  onStatPress?: (stat: ProfileStat) => void;
 };
 
 export function ProfileContent({
@@ -18,6 +19,7 @@ export function ProfileContent({
   photoBadge,
   nameAccessory,
   footer,
+  onStatPress,
 }: ProfileContentProps) {
   const brand = useBrandColors();
   return (
@@ -56,12 +58,34 @@ export function ProfileContent({
       </View>
 
       <View style={styles.statsRow}>
-        {profile.stats.map((stat) => (
-          <View key={stat.label} style={styles.statItem}>
-            <Text style={[styles.statValue, { color: brand.header }]}>{stat.value}</Text>
-            <Text style={styles.statLabel}>{stat.label}</Text>
-          </View>
-        ))}
+        {profile.stats.map((stat) => {
+          const content = (
+            <>
+              <Text style={[styles.statValue, { color: brand.header }]}>
+                {stat.value}
+              </Text>
+              <Text style={styles.statLabel}>{stat.label}</Text>
+            </>
+          );
+
+          if (onStatPress) {
+            return (
+              <Pressable
+                key={stat.label}
+                style={styles.statItem}
+                onPress={() => onStatPress(stat)}
+              >
+                {content}
+              </Pressable>
+            );
+          }
+
+          return (
+            <View key={stat.label} style={styles.statItem}>
+              {content}
+            </View>
+          );
+        })}
       </View>
 
       <View style={styles.fields}>
