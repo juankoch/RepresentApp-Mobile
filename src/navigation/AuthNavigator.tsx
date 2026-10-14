@@ -4,6 +4,7 @@ import { ConexionesProvider } from '../context/ConexionesContext';
 import { PlayerMessagesProvider } from '../context/PlayerMessagesContext';
 import { PlayerProfileProvider } from '../context/PlayerProfileContext';
 import { PlayerTrialsProvider } from '../context/PlayerTrialsContext';
+import { RepresentacionesProvider } from '../context/RepresentacionesContext';
 import { BlockUserScreen } from '../screens/BlockUserScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { ConnectionRequestsScreen } from '../screens/ConnectionRequestsScreen';
@@ -35,6 +36,7 @@ export function AuthNavigator() {
   return (
     <PlayerProfileProvider>
       <ConexionesProvider>
+      <RepresentacionesProvider>
       <PlayerTrialsProvider>
         <PlayerMessagesProvider>
           <Stack.Navigator
@@ -73,6 +75,7 @@ export function AuthNavigator() {
           </Stack.Navigator>
         </PlayerMessagesProvider>
       </PlayerTrialsProvider>
+      </RepresentacionesProvider>
       </ConexionesProvider>
     </PlayerProfileProvider>
   );

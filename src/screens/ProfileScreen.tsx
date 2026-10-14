@@ -27,6 +27,7 @@ import {
   fetchCreatedProfileKind,
   usePlayerProfile,
 } from '../context/PlayerProfileContext';
+import { useRepresentaciones } from '../context/RepresentacionesContext';
 import { OWN_PROFILE_ID, ProfileField, UserProfile } from '../data/playerProfiles';
 import { fetchPublicUserProfile } from '../lib/directory';
 import { getOrCreateConversation } from '../lib/mensajes';
@@ -241,6 +242,13 @@ export function ProfileScreen() {
     acceptIncomingRequest,
     refresh: refreshConexiones,
   } = useConexiones();
+  const {
+    representaciones,
+    sendRequest: sendRepresentationRequest,
+    accept: acceptRepresentation,
+    refresh: refreshRepresentaciones,
+    activeRepresentation,
+  } = useRepresentaciones();
 
   const userId = route.params?.userId ?? OWN_PROFILE_ID;
   const ownProfile = isOwnProfile(userId);
@@ -250,6 +258,9 @@ export function ProfileScreen() {
   const [missingPlayerProfile, setMissingPlayerProfile] = useState(false);
   const [otherProfile, setOtherProfile] = useState<UserProfile | undefined>();
   const [loadingOther, setLoadingOther] = useState(!ownProfile);
+  const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(
+    null,
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -262,9 +273,14 @@ export function ProfileScreen() {
 
       async function loadOtherProfile() {
         try {
-          await refreshConexiones();
+          const { data: userData } = await supabase.auth.getUser();
+          const sessionUserId = userData.user?.id?.trim() || null;
+          await Promise.all([refreshConexiones(), refreshRepresentaciones()]);
           const loaded = await fetchPublicUserProfile(userId);
           if (isCurrent) {
+            setAuthenticatedUserId(
+              sessionUserId && sessionUserId !== 'me' ? sessionUserId : null,
+            );
             setOtherProfile(loaded ?? undefined);
           }
         } catch {
@@ -282,7 +298,7 @@ export function ProfileScreen() {
       return () => {
         isCurrent = false;
       };
-    }, [ownProfile, refreshConexiones, userId]),
+    }, [ownProfile, refreshConexiones, refreshRepresentaciones, userId]),
   );
 
   useFocusEffect(
@@ -560,6 +576,31 @@ export function ProfileScreen() {
   const incoming = displayedProfile ? hasIncomingFrom(displayedProfile.id) : false;
   const blocked = displayedProfile ? isBlocked(displayedProfile.id) : false;
   const rating = displayedProfile ? getRating(displayedProfile.id) : undefined;
+  const otherProfileKind = displayedProfile?.kind;
+  const canShowRepresentation =
+    !ownProfile &&
+    !blocked &&
+    connected &&
+    Boolean(displayedProfile) &&
+    (otherProfileKind === 'player' || otherProfileKind === 'agent') &&
+    role !== otherProfileKind;
+  const pairRepresentation = displayedProfile
+    ? representaciones.find(
+        (row) =>
+          row.fk_jugador === displayedProfile.id ||
+          row.fk_representante === displayedProfile.id,
+      )
+    : undefined;
+  const playerHasActiveRepresentation =
+    role === 'player' &&
+    (Boolean(
+      activeRepresentation &&
+        (activeRepresentation.estado === 'pendiente' ||
+          activeRepresentation.estado === 'aceptada'),
+    ) ||
+      representaciones.some(
+        (row) => row.estado === 'pendiente' || row.estado === 'aceptada',
+      ));
 
   async function openChatWith(otherUserId: string) {
     try {
@@ -804,6 +845,111 @@ export function ProfileScreen() {
                     <FontAwesome5 name="paper-plane" size={14} color="#FFFFFF" />
                   </Pressable>
                 </View>
+                {canShowRepresentation ? (
+                  <View style={styles.representationRow}>
+                    {pairRepresentation?.estado === 'aceptada' ? (
+                      <View
+                        style={[styles.requestButton, styles.connectedButton]}
+                      >
+                        <FontAwesome5 name="check" size={14} color="#FFFFFF" />
+                        <Text style={styles.requestButtonText}>
+                          {role === 'player'
+                            ? 'Tu representante'
+                            : 'Lo representás'}
+                        </Text>
+                      </View>
+                    ) : pairRepresentation?.estado === 'pendiente' &&
+                      authenticatedUserId &&
+                      pairRepresentation.fk_solicitante ===
+                        authenticatedUserId ? (
+                      <View
+                        style={[
+                          styles.requestButton,
+                          styles.requestButtonSent,
+                        ]}
+                      >
+                        <FontAwesome5 name="clock" size={14} color="#8A8A8A" />
+                        <Text style={styles.requestButtonSentText}>
+                          Representación pendiente
+                        </Text>
+                      </View>
+                    ) : pairRepresentation?.estado === 'pendiente' &&
+                      authenticatedUserId &&
+                      pairRepresentation.fk_solicitante !==
+                        authenticatedUserId ? (
+                      <Pressable
+                        style={[
+                          styles.requestButton,
+                          { backgroundColor: brand.header },
+                        ]}
+                        onPress={() => {
+                          void acceptRepresentation(
+                            pairRepresentation.id_representacion,
+                          ).then((result) => {
+                            if (!result.ok) {
+                              Alert.alert(
+                                'No se pudo aceptar la representación',
+                                result.message,
+                              );
+                              return;
+                            }
+                            void refreshRepresentaciones();
+                          });
+                        }}
+                      >
+                        <FontAwesome5 name="check" size={14} color="#FFFFFF" />
+                        <Text style={styles.requestButtonText}>
+                          Aceptar representación
+                        </Text>
+                      </Pressable>
+                    ) : pairRepresentation?.estado === 'pendiente' ? (
+                      <View
+                        style={[
+                          styles.requestButton,
+                          styles.requestButtonSent,
+                        ]}
+                      >
+                        <FontAwesome5 name="clock" size={14} color="#8A8A8A" />
+                        <Text style={styles.requestButtonSentText}>
+                          Representación pendiente
+                        </Text>
+                      </View>
+                    ) : !pairRepresentation &&
+                      !(
+                        role === 'player' && playerHasActiveRepresentation
+                      ) ? (
+                      <Pressable
+                        style={[
+                          styles.requestButton,
+                          { backgroundColor: brand.header },
+                        ]}
+                        onPress={() => {
+                          void sendRepresentationRequest(
+                            displayedProfile.id,
+                          ).then((result) => {
+                            if (!result.ok) {
+                              Alert.alert(
+                                'No se pudo solicitar la representación',
+                                result.message,
+                              );
+                              return;
+                            }
+                            void refreshRepresentaciones();
+                          });
+                        }}
+                      >
+                        <FontAwesome5
+                          name="user-tie"
+                          size={14}
+                          color="#FFFFFF"
+                        />
+                        <Text style={styles.requestButtonText}>
+                          Solicitar representación
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
                 </View>
               )
             }
@@ -955,6 +1101,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 22,
+    gap: 10,
+  },
+  representationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
     gap: 10,
   },
   actionsAfterRating: {

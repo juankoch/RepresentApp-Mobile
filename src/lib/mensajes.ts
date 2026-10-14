@@ -1,4 +1,5 @@
 import { ChatMessage } from '../data/playerMessages';
+import { areUsersConnected } from './conexiones';
 import { supabase } from './supabase';
 
 export type MensajesResult<T> = { ok: true; data: T } | { ok: false; message: string };
@@ -172,29 +173,6 @@ export async function getConversationBetweenUsers(userId: string, otherUserId: s
 
   const id = idAsString((data as { id_conversacion?: unknown }).id_conversacion);
   return id && id !== 'me' ? id : null;
-}
-
-export async function areUsersConnected(userId: string, otherUserId: string) {
-  if (!isRealUserId(userId) || !isRealUserId(otherUserId) || userId.trim() === otherUserId.trim()) {
-    return false;
-  }
-
-  const first = userId.trim();
-  const second = otherUserId.trim();
-  const { data, error } = await supabase
-    .from('conexiones')
-    .select('id_conexion')
-    .eq('estado', 'aceptada')
-    .or(
-      `and(fk_solicitante.eq.${first},fk_receptor.eq.${second}),and(fk_solicitante.eq.${second},fk_receptor.eq.${first})`,
-    )
-    .limit(1);
-
-  if (error) {
-    return false;
-  }
-
-  return (data ?? []).length > 0;
 }
 
 export async function getOrCreateConversation(

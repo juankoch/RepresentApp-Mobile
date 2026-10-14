@@ -24,6 +24,34 @@ export async function getAuthenticatedUserId() {
   return data.user.id;
 }
 
+function isRealUserId(value: string) {
+  const id = value.trim();
+  return id.length > 0 && id !== 'me';
+}
+
+export async function areUsersConnected(userId: string, otherUserId: string) {
+  if (!isRealUserId(userId) || !isRealUserId(otherUserId) || userId.trim() === otherUserId.trim()) {
+    return false;
+  }
+
+  const first = userId.trim();
+  const second = otherUserId.trim();
+  const { data, error } = await supabase
+    .from('conexiones')
+    .select('id_conexion')
+    .eq('estado', 'aceptada')
+    .or(
+      `and(fk_solicitante.eq.${first},fk_receptor.eq.${second}),and(fk_solicitante.eq.${second},fk_receptor.eq.${first})`,
+    )
+    .limit(1);
+
+  if (error) {
+    return false;
+  }
+
+  return (data ?? []).length > 0;
+}
+
 function textValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
