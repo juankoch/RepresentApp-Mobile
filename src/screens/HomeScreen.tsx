@@ -32,6 +32,7 @@ import {
   fetchDirectoryAgents,
   fetchDirectoryPlayers,
 } from '../lib/directory';
+import { fetchUnreadRepresentationNotificationCount } from '../lib/notificaciones';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -90,6 +91,7 @@ export function HomeScreen() {
   const [isPremium, setIsPremium] = useState(false);
   const [players, setPlayers] = useState<DirectoryPerson[]>([]);
   const [agents, setAgents] = useState<DirectoryPerson[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const firstName = fetchedFirstName || firstNameFrom(currentProfile.name);
   const upcomingTrials = publishedTrials;
   const previewPlayers = players.slice(0, 8);
@@ -139,10 +141,19 @@ export function HomeScreen() {
         }
       }
 
+      async function loadUnreadNotifications() {
+        const result = await fetchUnreadRepresentationNotificationCount();
+        if (cancelled) {
+          return;
+        }
+        setUnreadNotificationsCount(result.ok ? result.data : 0);
+      }
+
       void loadIdentity();
       void loadPremium();
       void loadDirectory();
       void refreshConexiones();
+      void loadUnreadNotifications();
 
       return () => {
         cancelled = true;
@@ -183,9 +194,19 @@ export function HomeScreen() {
               <Text style={styles.tagline}>CONECTA TALENTO</Text>
             </View>
             <View style={styles.brandActions}>
-              <View style={styles.bellWrap}>
+              <Pressable
+                style={styles.bellWrap}
+                onPress={() => navigation.navigate('Notifications')}
+              >
                 <FontAwesome5 name="bell" size={18} color="#FFFFFF" />
-              </View>
+                {unreadNotificationsCount > 0 ? (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {unreadNotificationsCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
               <Pressable
                 onPress={() =>
                   navigation.navigate('Profile', { userId: OWN_PROFILE_ID })

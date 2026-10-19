@@ -220,6 +220,79 @@ async function fetchNombreById(
   return nombre || undefined;
 }
 
+function goBackFromProfile(
+  navigation: NativeStackNavigationProp<AuthStackParamList>,
+) {
+  if (navigation.canGoBack()) {
+    navigation.goBack();
+    return;
+  }
+  navigation.navigate('Home');
+}
+
+function OtherProfileSkeleton({
+  onBack,
+}: {
+  onBack: () => void;
+}) {
+  const brand = useBrandColors();
+  return (
+    <View style={[styles.root, { backgroundColor: brand.header }]}>
+      <StatusBar style="light" />
+      <View
+        style={[
+          styles.header,
+          Platform.OS === 'ios'
+            ? { paddingTop: 58 }
+            : { paddingTop: (RNStatusBar.currentHeight ?? 0) + 8 },
+        ]}
+      >
+        <Pressable style={styles.headerSide} onPress={onBack}>
+          <FontAwesome5 name="arrow-left" size={16} color="#FFFFFF" />
+        </Pressable>
+        <Text style={styles.headerTitle}>Perfil</Text>
+        <View style={styles.headerSide} />
+      </View>
+      <View style={styles.panel}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          scrollEnabled={false}
+        >
+          <View style={styles.skeletonWrap}>
+            <View style={styles.skeletonAvatar} />
+            <View style={styles.skeletonName} />
+            <View style={styles.skeletonBadge} />
+            <View style={styles.skeletonLocation} />
+            <View style={styles.skeletonStats}>
+              <View style={styles.skeletonStatBlock}>
+                <View style={styles.skeletonStatValue} />
+                <View style={styles.skeletonStatLabel} />
+              </View>
+              <View style={styles.skeletonStatBlock}>
+                <View style={styles.skeletonStatValue} />
+                <View style={styles.skeletonStatLabel} />
+              </View>
+              <View style={styles.skeletonStatBlock}>
+                <View style={styles.skeletonStatValue} />
+                <View style={styles.skeletonStatLabel} />
+              </View>
+            </View>
+            <View style={styles.skeletonField} />
+            <View style={styles.skeletonField} />
+            <View style={styles.skeletonField} />
+            <View style={styles.skeletonField} />
+            <View style={styles.skeletonField} />
+            <View style={styles.skeletonAboutTitle} />
+            <View style={styles.skeletonAbout} />
+          </View>
+        </ScrollView>
+      </View>
+      <PlayerTabBar />
+    </View>
+  );
+}
+
 export function ProfileScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
@@ -249,6 +322,7 @@ export function ProfileScreen() {
     refresh: refreshRepresentaciones,
     activeRepresentation,
     getRepresentedPlayers,
+    error: representacionesError,
   } = useRepresentaciones();
 
   const userId = route.params?.userId ?? OWN_PROFILE_ID;
@@ -262,6 +336,9 @@ export function ProfileScreen() {
   const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(
     null,
   );
+  const [actionsLoaded, setActionsLoaded] = useState(false);
+  const [otherLoadError, setOtherLoadError] = useState<string | null>(null);
+  const [otherRetryNonce, setOtherRetryNonce] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -270,44 +347,75 @@ export function ProfileScreen() {
       }
 
       let isCurrent = true;
+      setOtherProfile((current) => (current?.id === userId ? current : undefined));
       setLoadingOther(true);
+      setOtherLoadError(null);
+
+      async function loadSecondary(loadedProfile: UserProfile | undefined) {
+        try {
+          await Promise.all([refreshConexiones(), refreshRepresentaciones()]);
+        } finally {
+          if (isCurrent) {
+            setActionsLoaded(true);
+          }
+        }
+
+        if (
+          !isCurrent ||
+          !loadedProfile ||
+          loadedProfile.kind !== 'agent' ||
+          !loadedProfile.id ||
+          loadedProfile.id === 'me'
+        ) {
+          return;
+        }
+
+        const rows = await getRepresentedPlayers(loadedProfile.id);
+        if (!isCurrent) {
+          return;
+        }
+        const count = rows.filter((row) => row.estado === 'aceptada').length;
+        setOtherProfile((current) => {
+          if (!current || current.id !== loadedProfile.id) {
+            return current;
+          }
+          return {
+            ...current,
+            stats: current.stats.map((stat) =>
+              stat.label === 'Jugadores'
+                ? { ...stat, value: String(count) }
+                : stat,
+            ),
+          };
+        });
+      }
 
       async function loadOtherProfile() {
         try {
           const { data: userData } = await supabase.auth.getUser();
           const sessionUserId = userData.user?.id?.trim() || null;
-          await Promise.all([refreshConexiones(), refreshRepresentaciones()]);
-          const loaded = await fetchPublicUserProfile(userId);
-          let nextProfile = loaded ?? undefined;
-          if (nextProfile?.kind === 'agent' && nextProfile.id && nextProfile.id !== 'me') {
-            try {
-              const rows = await getRepresentedPlayers(nextProfile.id);
-              const count = rows.filter((row) => row.estado === 'aceptada').length;
-              nextProfile = {
-                ...nextProfile,
-                stats: nextProfile.stats.map((stat) =>
-                  stat.label === 'Jugadores'
-                    ? { ...stat, value: String(count) }
-                    : stat,
-                ),
-              };
-            } catch {
-              // Keep the placeholder if the count cannot be loaded.
-            }
-          }
           if (isCurrent) {
             setAuthenticatedUserId(
               sessionUserId && sessionUserId !== 'me' ? sessionUserId : null,
             );
-            setOtherProfile(nextProfile);
           }
-        } catch {
+
+          const loaded = await fetchPublicUserProfile(userId);
+          if (!isCurrent) {
+            return;
+          }
+
+          setOtherProfile(loaded ?? undefined);
+          setLoadingOther(false);
+          setOtherLoadError(null);
+          if (loaded) {
+            void loadSecondary(loaded);
+          }
+        } catch (error) {
           if (isCurrent) {
             setOtherProfile(undefined);
-          }
-        } finally {
-          if (isCurrent) {
             setLoadingOther(false);
+            setOtherLoadError(errorMessage(error));
           }
         }
       }
@@ -318,6 +426,7 @@ export function ProfileScreen() {
       };
     }, [
       getRepresentedPlayers,
+      otherRetryNonce,
       ownProfile,
       refreshConexiones,
       refreshRepresentaciones,
@@ -633,6 +742,8 @@ export function ProfileScreen() {
   const otherProfileKind = displayedProfile?.kind;
   const canShowRepresentation =
     !ownProfile &&
+    actionsLoaded &&
+    !representacionesError &&
     !blocked &&
     connected &&
     Boolean(displayedProfile) &&
@@ -685,18 +796,46 @@ export function ProfileScreen() {
   if (!displayedProfile) {
     if (!ownProfile && loadingOther) {
       return (
-        <View style={[styles.root, { backgroundColor: brand.header }]}>
-          <StatusBar style="light" />
-          <PlayerTabBar />
-        </View>
+        <OtherProfileSkeleton onBack={() => goBackFromProfile(navigation)} />
       );
     }
     return (
       <View style={[styles.root, { backgroundColor: brand.header }]}>
         <StatusBar style="light" />
+        <View
+          style={[
+            styles.header,
+            Platform.OS === 'ios'
+              ? { paddingTop: 58 }
+              : { paddingTop: (RNStatusBar.currentHeight ?? 0) + 8 },
+          ]}
+        >
+          <Pressable
+            style={styles.headerSide}
+            onPress={() => goBackFromProfile(navigation)}
+          >
+            <FontAwesome5 name="arrow-left" size={16} color="#FFFFFF" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Perfil</Text>
+          <View style={styles.headerSide} />
+        </View>
         <View style={styles.missing}>
-          <Text style={styles.missingText}>No encontramos este perfil.</Text>
-          <Pressable onPress={() => navigation.goBack()}>
+          <Text style={styles.missingText}>
+            {otherLoadError
+              ? 'No se pudo cargar este perfil.'
+              : 'No encontramos este perfil.'}
+          </Text>
+          {otherLoadError ? (
+            <Pressable
+              onPress={() => {
+                setLoadingOther(true);
+                setOtherRetryNonce((current) => current + 1);
+              }}
+            >
+              <Text style={styles.backLink}>Reintentar</Text>
+            </Pressable>
+          ) : null}
+          <Pressable onPress={() => goBackFromProfile(navigation)}>
             <Text style={styles.backLink}>Volver</Text>
           </Pressable>
         </View>
@@ -719,13 +858,7 @@ export function ProfileScreen() {
       >
         <Pressable
           style={styles.headerSide}
-          onPress={() => {
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-              return;
-            }
-            navigation.navigate('Home');
-          }}
+          onPress={() => goBackFromProfile(navigation)}
         >
           <FontAwesome5 name="arrow-left" size={16} color="#FFFFFF" />
         </Pressable>
@@ -856,6 +989,7 @@ export function ProfileScreen() {
                       <Text style={styles.ratedText}>Calificado</Text>
                     </View>
                   ) : null}
+                  {actionsLoaded ? (
                   <View style={[styles.actions, rating ? styles.actionsAfterRating : null]}>
                   {connected ? (
                     <View style={[styles.requestButton, styles.connectedButton]}>
@@ -915,6 +1049,7 @@ export function ProfileScreen() {
                     <FontAwesome5 name="paper-plane" size={14} color="#FFFFFF" />
                   </Pressable>
                 </View>
+                  ) : null}
                 {canShowRepresentation ? (
                   <View style={styles.representationRow}>
                     {pairRepresentation?.estado === 'aceptada' ? (
@@ -1215,5 +1350,85 @@ const styles = StyleSheet.create({
     backgroundColor: colors.homeHeader,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  skeletonWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 24,
+    alignItems: 'center',
+  },
+  skeletonAvatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.inputBackground,
+  },
+  skeletonName: {
+    width: 180,
+    height: 22,
+    marginTop: 14,
+    borderRadius: 8,
+    backgroundColor: colors.inputBackground,
+  },
+  skeletonBadge: {
+    width: 92,
+    height: 22,
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: '#F3F6F4',
+  },
+  skeletonLocation: {
+    width: 120,
+    height: 12,
+    marginTop: 8,
+    borderRadius: 6,
+    backgroundColor: '#F3F6F4',
+  },
+  skeletonStats: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    marginTop: 22,
+    marginBottom: 18,
+    backgroundColor: '#F3F6F4',
+    borderRadius: 18,
+    paddingVertical: 14,
+  },
+  skeletonStatBlock: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  skeletonStatValue: {
+    width: 28,
+    height: 18,
+    borderRadius: 6,
+    backgroundColor: colors.inputBackground,
+  },
+  skeletonStatLabel: {
+    width: 54,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.inputBackground,
+  },
+  skeletonField: {
+    alignSelf: 'stretch',
+    height: 16,
+    marginBottom: 22,
+    borderRadius: 8,
+    backgroundColor: '#F3F6F4',
+  },
+  skeletonAboutTitle: {
+    alignSelf: 'flex-start',
+    width: 90,
+    height: 16,
+    marginBottom: 10,
+    borderRadius: 8,
+    backgroundColor: colors.inputBackground,
+  },
+  skeletonAbout: {
+    alignSelf: 'stretch',
+    height: 72,
+    borderRadius: 16,
+    backgroundColor: '#F3F6F4',
   },
 });

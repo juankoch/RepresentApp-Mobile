@@ -17,6 +17,7 @@ import { HighlightsScreen } from '../screens/HighlightsScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MessagesScreen } from '../screens/MessagesScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { PeopleListScreen } from '../screens/PeopleListScreen';
 import { PremiumScreen } from '../screens/PremiumScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -70,6 +71,7 @@ export function AuthNavigator() {
               name="RepresentedPlayers"
               component={RepresentedPlayersScreen}
             />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} />
             <Stack.Screen name="Premium" component={PremiumScreen} />
             <Stack.Screen name="UserOptions" component={UserOptionsScreen} />
             <Stack.Screen name="RateUser" component={RateUserScreen} />

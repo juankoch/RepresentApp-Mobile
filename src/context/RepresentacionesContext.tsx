@@ -65,6 +65,10 @@ export function RepresentacionesProvider({ children }: { children: ReactNode }) 
     setIncomingRequests([]);
   }, []);
 
+  const getRepresentedPlayers = useCallback((representativeId: string) => {
+    return fetchRepresentedPlayers(representativeId);
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -162,12 +166,12 @@ export function RepresentacionesProvider({ children }: { children: ReactNode }) 
         fetchIsRepresenting(representativeId, playerId),
       getActiveRepresentationForPlayer: (playerId) =>
         fetchActiveRepresentationForPlayer(playerId),
-      getRepresentedPlayers: (representativeId) =>
-        fetchRepresentedPlayers(representativeId),
+      getRepresentedPlayers,
     }),
     [
       activeRepresentation,
       error,
+      getRepresentedPlayers,
       incomingCount,
       incomingRequests,
       loading,

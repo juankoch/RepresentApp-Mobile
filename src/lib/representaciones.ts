@@ -21,6 +21,11 @@ export type RepresentacionMutationResult =
   | { ok: true }
   | { ok: false; message: string };
 
+type RepresentationNotificationTipo =
+  | 'solicitud_recibida'
+  | 'solicitud_aceptada'
+  | 'solicitud_rechazada';
+
 const REPRESENTACION_COLUMNS =
   'id_representacion, fk_jugador, fk_representante, fk_solicitante, estado, fecha_solicitud, fecha_respuesta';
 
@@ -103,6 +108,32 @@ function mutationErrorMessage(error: { message?: string } | null, fallback: stri
     return 'No se pudo actualizar la representación. Revisá las policies de public.representaciones.';
   }
   return message;
+}
+
+async function createRepresentationNotification(params: {
+  destinatarioId: string;
+  emisorId: string;
+  representacionId: number;
+  tipo: RepresentationNotificationTipo;
+}) {
+  const destinatarioId = params.destinatarioId.trim();
+  const emisorId = params.emisorId.trim();
+  if (
+    !isRealUserId(destinatarioId) ||
+    !isRealUserId(emisorId) ||
+    destinatarioId === 'me' ||
+    emisorId === 'me' ||
+    destinatarioId === emisorId
+  ) {
+    return;
+  }
+
+  await supabase.from('notificaciones_representacion').insert({
+    fk_destinatario: destinatarioId,
+    fk_emisor: emisorId,
+    fk_representacion: params.representacionId,
+    tipo: params.tipo,
+  });
 }
 
 export async function getAuthenticatedUserId() {
@@ -312,12 +343,16 @@ export async function sendRepresentationRequest(
     };
   }
 
-  const { error } = await supabase.from('representaciones').insert({
-    fk_jugador: pair.fk_jugador,
-    fk_representante: pair.fk_representante,
-    fk_solicitante: myId,
-    estado: 'pendiente',
-  });
+  const { data, error } = await supabase
+    .from('representaciones')
+    .insert({
+      fk_jugador: pair.fk_jugador,
+      fk_representante: pair.fk_representante,
+      fk_solicitante: myId,
+      estado: 'pendiente',
+    })
+    .select('id_representacion')
+    .maybeSingle();
 
   if (error) {
     if (isUniqueViolation(error)) {
@@ -330,6 +365,20 @@ export async function sendRepresentationRequest(
       ok: false,
       message: mutationErrorMessage(error, 'No se pudo enviar la solicitud de representación.'),
     };
+  }
+
+  const createdId = bigintId(
+    (data as { id_representacion?: unknown } | null)?.id_representacion,
+  );
+  const destinatarioId =
+    pair.fk_jugador === myId ? pair.fk_representante : pair.fk_jugador;
+  if (createdId != null) {
+    await createRepresentationNotification({
+      destinatarioId,
+      emisorId: myId,
+      representacionId: createdId,
+      tipo: 'solicitud_recibida',
+    });
   }
 
   return { ok: true };
@@ -395,6 +444,13 @@ async function responderSolicitud(
         'No se pudo actualizar la solicitud de representación. Si el SELECT funciona, falta una policy UPDATE en public.representaciones.',
     };
   }
+
+  await createRepresentationNotification({
+    destinatarioId: row.fk_solicitante,
+    emisorId: myId,
+    representacionId: idRepresentacion,
+    tipo: estado === 'aceptada' ? 'solicitud_aceptada' : 'solicitud_rechazada',
+  });
 
   return { ok: true };
 }
