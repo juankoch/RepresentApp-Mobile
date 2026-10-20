@@ -23,15 +23,14 @@ import { PlayerTabBar } from '../components/PlayerTabBar';
 import { PremiumBadge } from '../components/PremiumBadge';
 import { ProfileContent } from '../components/ProfileContent';
 import { useConexiones } from '../context/ConexionesContext';
-import {
-  fetchCreatedProfileKind,
-  usePlayerProfile,
-} from '../context/PlayerProfileContext';
+import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { useRepresentaciones } from '../context/RepresentacionesContext';
 import { OWN_PROFILE_ID, ProfileField, UserProfile } from '../data/playerProfiles';
-import { fetchPublicUserProfile } from '../lib/directory';
 import { getOrCreateConversation } from '../lib/mensajes';
-import { piernaHabilToDisplay } from '../lib/piernaHabil';
+import {
+  fetchProfileByUserId,
+  profileToUserProfile,
+} from '../lib/perfil';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -53,171 +52,85 @@ function errorMessage(error: unknown) {
   return 'No pudimos cargar tu perfil.';
 }
 
-function textValue(value: unknown) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function experienceDisplay(value: unknown) {
-  let years: number | null = null;
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    years = value;
-  } else if (typeof value === 'string' && value.trim()) {
-    const parsed = Number.parseInt(value.replace(/[^\d-]/g, ''), 10);
-    years = Number.isFinite(parsed) ? parsed : null;
+function overlayOwnProfile(
+  current: UserProfile | undefined,
+  session: UserProfile,
+): UserProfile | undefined {
+  const sessionName = session.name.trim();
+  if (!current && !sessionName) {
+    return current;
   }
 
-  if (years == null) {
-    return '';
-  }
+  const base = current ?? session;
+  const sessionFields = new Map(session.fields.map((field) => [field.label, field]));
+  const fields = base.fields.map((field) => {
+    const incoming = sessionFields.get(field.label);
+    if (!incoming) {
+      return field;
+    }
+    if (field.label === 'Representante') {
+      return field.value && field.value !== '—' ? field : incoming;
+    }
+    const incomingValue = incoming.value.trim();
+    if (!incomingValue || incomingValue === 'Sin datos') {
+      return field;
+    }
+    return { ...field, value: incoming.value };
+  });
+  const missingFromBase = session.fields.filter(
+    (field) => !base.fields.some((item) => item.label === field.label),
+  );
 
-  return years === 1 ? '1 año' : `${years} años`;
-}
-
-function alturaDisplay(value: unknown) {
-  let cm: number | null = null;
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    cm = value;
-  } else if (typeof value === 'string' && value.trim()) {
-    const parsed = Number.parseInt(value.replace(/[^\d-]/g, ''), 10);
-    cm = Number.isFinite(parsed) ? parsed : null;
-  }
-
-  if (cm == null) {
-    return '';
-  }
-
-  return `${cm} cm`;
-}
-
-function formatBirthDateDisplay(value: unknown) {
-  const raw = textValue(value);
-  if (!raw) {
-    return undefined;
-  }
-
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
-  if (iso) {
-    return `${iso[3]}/${iso[2]}/${iso[1]}`;
-  }
-
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
-    return raw;
-  }
-
-  return undefined;
-}
-
-function ageFromBirthDate(value: unknown) {
-  const raw = textValue(value);
-  if (!raw) {
-    return undefined;
-  }
-
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
-  const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
-  const year = iso ? Number(iso[1]) : dmy ? Number(dmy[3]) : NaN;
-  const month = iso ? Number(iso[2]) : dmy ? Number(dmy[2]) : NaN;
-  const day = iso ? Number(iso[3]) : dmy ? Number(dmy[1]) : NaN;
-
-  if (!year || !month || !day) {
-    return undefined;
-  }
-
-  const birth = new Date(year, month - 1, day);
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDelta = today.getMonth() - birth.getMonth();
-  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birth.getDate())) {
-    age -= 1;
-  }
-  if (age < 0 || age > 120) {
-    return undefined;
-  }
-
-  return `${age} años`;
-}
-
-function valueOrPlaceholder(value?: string) {
-  return value && value.trim() ? value.trim() : 'Sin datos';
-}
-
-function isRemotePhotoUrl(value: string) {
-  return /^https?:\/\//i.test(value);
-}
-
-function locationFromUsuario(pais?: unknown, ciudad?: unknown) {
-  const city = textValue(ciudad);
-  const country = textValue(pais);
-  return [city, country].filter(Boolean).join(', ');
-}
-
-function emptyOwnFields(kind: 'player' | 'agent'): ProfileField[] {
-  if (kind === 'agent') {
-    return [
-      { icon: 'building', label: 'Agencia', value: 'Sin datos' },
-      { icon: 'briefcase', label: 'Experiencia', value: 'Sin datos' },
-      { icon: 'star', label: 'Especialidad', value: 'Sin datos' },
-      { icon: 'map-marker-alt', label: 'Zona', value: 'Sin datos' },
-      { icon: 'users', label: 'Representados', value: 'Sin datos' },
-      { icon: 'user-friends', label: 'Enfoque', value: 'Sin datos' },
-    ];
-  }
-
-  return [
-    { icon: 'futbol', label: 'Posición', value: 'Sin datos' },
-    { icon: 'flag', label: 'Categoría', value: 'Sin datos' },
-    { icon: 'calendar-alt', label: 'Edad', value: 'Sin datos' },
-    { icon: 'arrows-alt-v', label: 'Altura', value: 'Sin datos' },
-    { icon: 'walking', label: 'Pierna hábil', value: 'Sin datos' },
-    { icon: 'shield-alt', label: 'Club actual', value: 'Sin datos' },
-    { icon: 'user-tie', label: 'Representante', value: 'Sin datos' },
-  ];
-}
-
-function emptyOwnProfile(kind: 'player' | 'agent'): UserProfile {
   return {
-    id: OWN_PROFILE_ID,
-    kind,
-    name: 'Sin datos',
-    location: 'Sin datos',
-    stats:
-      kind === 'agent'
-        ? [
-            { value: '—', label: 'Jugadores' },
-            { value: '—', label: 'Conexiones' },
-            { value: '—', label: 'Años exp.' },
-          ]
-        : [
-            { value: '—', label: 'Partidos' },
-            { value: '—', label: 'Goles' },
-            { value: '—', label: 'Asistencias' },
-          ],
-    fields: emptyOwnFields(kind),
-    about: 'Sin datos',
+    ...base,
+    kind: session.kind || base.kind,
+    name: sessionName || base.name,
+    email: session.email || base.email,
+    photoUrl: session.photoUrl ?? base.photoUrl,
+    location: session.location.trim() ? session.location : base.location,
+    about:
+      session.about.trim() && session.about !== 'Sin datos'
+        ? session.about
+        : base.about,
+    birthDate: session.birthDate || base.birthDate,
+    stats: overlayOwnStats(base, session),
+    fields: [...fields, ...missingFromBase],
+    representativeId: current?.representativeId ?? session.representativeId,
   };
 }
 
-async function fetchNombreById(
-  table: 'posiciones' | 'clubes',
-  idField: 'id_posicion' | 'id_club',
-  id: string | number | null,
-) {
-  if (id == null) {
-    return undefined;
+function overlayOwnStats(base: UserProfile, session: UserProfile) {
+  const kind = session.kind || base.kind;
+  const conexiones =
+    session.stats.find((stat) => stat.label === 'Conexiones')?.value ||
+    base.stats.find((stat) => stat.label === 'Conexiones')?.value ||
+    '—';
+  const edad =
+    session.stats.find((stat) => stat.label === 'Edad')?.value ||
+    base.stats.find((stat) => stat.label === 'Edad')?.value ||
+    '—';
+
+  if (kind === 'agent') {
+    const represented =
+      base.stats.find((stat) => stat.label === 'Representados')?.value ||
+      session.stats.find((stat) => stat.label === 'Representados')?.value ||
+      '—';
+    return [
+      { label: 'Conexiones', value: conexiones },
+      { label: 'Edad', value: edad },
+      { label: 'Representados', value: represented },
+    ];
   }
 
-  const { data, error } = await supabase
-    .from(table)
-    .select('nombre')
-    .eq(idField, id)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  const nombre = textValue((data as { nombre?: unknown } | null)?.nombre);
-  return nombre || undefined;
+  const representative =
+    base.stats.find((stat) => stat.label === 'Representante')?.value ||
+    session.stats.find((stat) => stat.label === 'Representante')?.value ||
+    '✕';
+  return [
+    { label: 'Conexiones', value: conexiones },
+    { label: 'Edad', value: edad },
+    { label: 'Representante', value: representative },
+  ];
 }
 
 function goBackFromProfile(
@@ -232,8 +145,10 @@ function goBackFromProfile(
 
 function OtherProfileSkeleton({
   onBack,
+  title,
 }: {
   onBack: () => void;
+  title: string;
 }) {
   const brand = useBrandColors();
   return (
@@ -250,7 +165,7 @@ function OtherProfileSkeleton({
         <Pressable style={styles.headerSide} onPress={onBack}>
           <FontAwesome5 name="arrow-left" size={16} color="#FFFFFF" />
         </Pressable>
-        <Text style={styles.headerTitle}>Perfil</Text>
+        <Text style={styles.headerTitle}>{title}</Text>
         <View style={styles.headerSide} />
       </View>
       <View style={styles.panel}>
@@ -321,17 +236,15 @@ export function ProfileScreen() {
     accept: acceptRepresentation,
     refresh: refreshRepresentaciones,
     activeRepresentation,
-    getRepresentedPlayers,
     error: representacionesError,
   } = useRepresentaciones();
 
   const userId = route.params?.userId ?? OWN_PROFILE_ID;
   const ownProfile = isOwnProfile(userId);
-  const [ownProfileData, setOwnProfileData] = useState<UserProfile>(() =>
-    emptyOwnProfile(role === 'agent' ? 'agent' : 'player'),
-  );
+  const [ownProfileData, setOwnProfileData] = useState<UserProfile | undefined>();
   const [missingPlayerProfile, setMissingPlayerProfile] = useState(false);
   const [otherProfile, setOtherProfile] = useState<UserProfile | undefined>();
+  const [loadingOwn, setLoadingOwn] = useState(ownProfile);
   const [loadingOther, setLoadingOther] = useState(!ownProfile);
   const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(
     null,
@@ -351,7 +264,7 @@ export function ProfileScreen() {
       setLoadingOther(true);
       setOtherLoadError(null);
 
-      async function loadSecondary(loadedProfile: UserProfile | undefined) {
+      async function loadSecondary() {
         try {
           await Promise.all([refreshConexiones(), refreshRepresentaciones()]);
         } finally {
@@ -359,35 +272,6 @@ export function ProfileScreen() {
             setActionsLoaded(true);
           }
         }
-
-        if (
-          !isCurrent ||
-          !loadedProfile ||
-          loadedProfile.kind !== 'agent' ||
-          !loadedProfile.id ||
-          loadedProfile.id === 'me'
-        ) {
-          return;
-        }
-
-        const rows = await getRepresentedPlayers(loadedProfile.id);
-        if (!isCurrent) {
-          return;
-        }
-        const count = rows.filter((row) => row.estado === 'aceptada').length;
-        setOtherProfile((current) => {
-          if (!current || current.id !== loadedProfile.id) {
-            return current;
-          }
-          return {
-            ...current,
-            stats: current.stats.map((stat) =>
-              stat.label === 'Jugadores'
-                ? { ...stat, value: String(count) }
-                : stat,
-            ),
-          };
-        });
       }
 
       async function loadOtherProfile() {
@@ -400,20 +284,19 @@ export function ProfileScreen() {
             );
           }
 
-          const loaded = await fetchPublicUserProfile(userId);
+          const loaded = await fetchProfileByUserId(userId);
           if (!isCurrent) {
             return;
           }
 
-          setOtherProfile(loaded ?? undefined);
+          setOtherProfile(loaded ? profileToUserProfile(loaded) : undefined);
           setLoadingOther(false);
           setOtherLoadError(null);
           if (loaded) {
-            void loadSecondary(loaded);
+            void loadSecondary();
           }
         } catch (error) {
           if (isCurrent) {
-            setOtherProfile(undefined);
             setLoadingOther(false);
             setOtherLoadError(errorMessage(error));
           }
@@ -425,7 +308,6 @@ export function ProfileScreen() {
         isCurrent = false;
       };
     }, [
-      getRepresentedPlayers,
       otherRetryNonce,
       ownProfile,
       refreshConexiones,
@@ -441,16 +323,7 @@ export function ProfileScreen() {
       }
 
       let isCurrent = true;
-
-      if (role === 'agent') {
-        setOwnProfileData((current) => ({
-          ...emptyOwnProfile('agent'),
-          name: currentProfile.name || current.name,
-          email: currentProfile.email || current.email,
-          about: currentProfile.about || current.about,
-          fields: current.kind === 'agent' ? current.fields : emptyOwnFields('agent'),
-        }));
-      }
+      setOwnProfileData((current) => overlayOwnProfile(current, currentProfile));
 
       async function loadOwnProfile() {
         try {
@@ -460,259 +333,32 @@ export function ProfileScreen() {
           }
 
           const user = userData.user;
-          if (!user) {
+          if (!user || user.id === 'me') {
             return;
           }
           if (isCurrent) {
-            setAuthenticatedUserId(user.id !== 'me' ? user.id : null);
+            setAuthenticatedUserId(user.id);
           }
 
-          const { kind: createdKind, error: kindError } =
-            await fetchCreatedProfileKind(user.id);
-          if (kindError) {
-            throw kindError;
-          }
-
-          let { data: usuario, error: usuarioError } = await supabase
-            .from('usuarios')
-            .select(
-              'id_usuario, nombre, apellido, email, fecha_nacimiento, foto_perfil, pais, ciudad',
-            )
-            .eq('id_usuario', user.id)
-            .maybeSingle();
-
-          if (
-            usuarioError &&
-            /ciudad/i.test(usuarioError.message)
-          ) {
-            const retry = await supabase
-              .from('usuarios')
-              .select(
-                'id_usuario, nombre, apellido, email, fecha_nacimiento, foto_perfil, pais',
-              )
-              .eq('id_usuario', user.id)
-              .maybeSingle();
-            usuario = retry.data as typeof usuario;
-            usuarioError = retry.error;
-          }
-
-          if (usuarioError) {
-            throw usuarioError;
-          }
+          const loaded = await fetchProfileByUserId(user.id);
           if (!isCurrent) {
             return;
           }
-          if (!usuario) {
-            setMissingPlayerProfile(createdKind !== 'agent');
-            setOwnProfileData(emptyOwnProfile(role === 'agent' ? 'agent' : 'player'));
+          if (!loaded) {
+            setMissingPlayerProfile(true);
+            setLoadingOwn(false);
             return;
           }
 
-          const usuarioRow = usuario as {
-            nombre?: unknown;
-            apellido?: unknown;
-            email?: unknown;
-            fecha_nacimiento?: unknown;
-            foto_perfil?: unknown;
-            pais?: unknown;
-            ciudad?: unknown;
-          };
-
-          const isAgent = role === 'agent' || createdKind === 'agent';
-          const kind = isAgent ? 'agent' : 'player';
-          const fullName = `${textValue(usuarioRow.nombre)} ${textValue(usuarioRow.apellido)}`.trim();
-          const email = textValue(usuarioRow.email);
-          const birthDate = formatBirthDateDisplay(usuarioRow.fecha_nacimiento);
-          const age = ageFromBirthDate(usuarioRow.fecha_nacimiento);
-          const photoRaw = textValue(usuarioRow.foto_perfil);
-          const photoUrl = isRemotePhotoUrl(photoRaw) ? photoRaw : undefined;
-          const location = locationFromUsuario(usuarioRow.pais, usuarioRow.ciudad);
-
-          let fields = emptyOwnFields(kind);
-          let about = 'Sin datos';
-          let playerProfileMissing = false;
-
-          if (isAgent) {
-            const { data: agente, error: agenteError } = await supabase
-              .from('perfiles_representante')
-              .select(
-                'descripcion, empresa, anios_experiencia, especialidad, zona, enfoque',
-              )
-              .eq('id_usuario', user.id)
-              .maybeSingle();
-
-            if (agenteError) {
-              throw agenteError;
-            }
-
-            const agenteRow = agente as {
-              descripcion?: unknown;
-              empresa?: unknown;
-              anios_experiencia?: unknown;
-              especialidad?: unknown;
-              zona?: unknown;
-              enfoque?: unknown;
-            } | null;
-            about = valueOrPlaceholder(textValue(agenteRow?.descripcion));
-            fields = emptyOwnFields('agent').map((field) => {
-              switch (field.label) {
-                case 'Agencia':
-                  return {
-                    ...field,
-                    value: valueOrPlaceholder(textValue(agenteRow?.empresa)),
-                  };
-                case 'Experiencia':
-                  return {
-                    ...field,
-                    value: valueOrPlaceholder(
-                      experienceDisplay(agenteRow?.anios_experiencia),
-                    ),
-                  };
-                case 'Especialidad':
-                  return {
-                    ...field,
-                    value: valueOrPlaceholder(textValue(agenteRow?.especialidad)),
-                  };
-                case 'Zona':
-                  return {
-                    ...field,
-                    value: valueOrPlaceholder(textValue(agenteRow?.zona)),
-                  };
-                case 'Enfoque':
-                  return {
-                    ...field,
-                    value: valueOrPlaceholder(textValue(agenteRow?.enfoque)),
-                  };
-                default:
-                  return field;
-              }
-            });
-          } else {
-            const { data: jugador, error: jugadorError } = await supabase
-              .from('perfiles_jugador')
-              .select(
-                'categoria, fk_posicion, fk_club_actual, pierna_habil, descripcion, altura_cm',
-              )
-              .eq('id_usuario', user.id)
-              .maybeSingle();
-
-            if (jugadorError) {
-              throw jugadorError;
-            }
-
-            const jugadorRow = jugador as {
-              categoria?: unknown;
-              fk_posicion?: string | number | null;
-              fk_club_actual?: string | number | null;
-              pierna_habil?: unknown;
-              descripcion?: unknown;
-              altura_cm?: unknown;
-            } | null;
-
-            playerProfileMissing = !jugadorRow;
-
-            if (!jugadorRow) {
-              about = 'Todavía no creaste tu perfil de jugador.';
-              fields = emptyOwnFields('player').map((field) =>
-                field.label === 'Edad'
-                  ? { ...field, value: valueOrPlaceholder(age) }
-                  : field,
-              );
-            } else {
-              about = valueOrPlaceholder(textValue(jugadorRow.descripcion));
-
-              const posicionNombre = await fetchNombreById(
-                'posiciones',
-                'id_posicion',
-                jugadorRow.fk_posicion ?? null,
-              );
-              const clubNombre = await fetchNombreById(
-                'clubes',
-                'id_club',
-                jugadorRow.fk_club_actual ?? null,
-              );
-
-              fields = [
-                {
-                  icon: 'futbol',
-                  label: 'Posición',
-                  value: valueOrPlaceholder(posicionNombre),
-                },
-                {
-                  icon: 'flag',
-                  label: 'Categoría',
-                  value: valueOrPlaceholder(textValue(jugadorRow.categoria)),
-                },
-                {
-                  icon: 'calendar-alt',
-                  label: 'Edad',
-                  value: valueOrPlaceholder(age),
-                },
-                {
-                  icon: 'arrows-alt-v',
-                  label: 'Altura',
-                  value: valueOrPlaceholder(alturaDisplay(jugadorRow.altura_cm)),
-                },
-                {
-                  icon: 'walking',
-                  label: 'Pierna hábil',
-                  value: valueOrPlaceholder(
-                    piernaHabilToDisplay(jugadorRow.pierna_habil),
-                  ),
-                },
-                {
-                  icon: 'shield-alt',
-                  label: 'Club actual',
-                  value: valueOrPlaceholder(clubNombre),
-                },
-                {
-                  icon: 'user-tie',
-                  label: 'Representante',
-                  value: 'Sin datos',
-                },
-              ];
-            }
-          }
-
-          if (!isCurrent) {
-            return;
-          }
-
-          setMissingPlayerProfile(playerProfileMissing);
-          let nextOwnProfile: UserProfile = {
-            ...emptyOwnProfile(kind),
-            kind,
-            name: valueOrPlaceholder(fullName),
-            email: email || undefined,
-            location: valueOrPlaceholder(location),
-            photo: undefined,
-            photoUrl,
-            birthDate,
-            fields,
-            about,
-          };
-          if (kind === 'agent') {
-            try {
-              const rows = await getRepresentedPlayers(user.id);
-              const count = rows.filter((row) => row.estado === 'aceptada').length;
-              nextOwnProfile = {
-                ...nextOwnProfile,
-                stats: nextOwnProfile.stats.map((stat) =>
-                  stat.label === 'Jugadores'
-                    ? { ...stat, value: String(count) }
-                    : stat,
-                ),
-              };
-            } catch {
-              // Keep the placeholder if the count cannot be loaded.
-            }
-          }
-          if (!isCurrent) {
-            return;
-          }
-          setOwnProfileData(nextOwnProfile);
+          setMissingPlayerProfile(
+            loaded.kind === 'player' && loaded.missingKindProfile,
+          );
+          setOwnProfileData(profileToUserProfile(loaded));
+          setLoadingOwn(false);
+          void Promise.all([refreshConexiones(), refreshRepresentaciones()]);
         } catch (error) {
           if (isCurrent) {
+            setLoadingOwn(false);
             Alert.alert('No pudimos cargar tu perfil', errorMessage(error));
           }
         }
@@ -724,12 +370,10 @@ export function ProfileScreen() {
         isCurrent = false;
       };
     }, [
-      currentProfile.about,
-      currentProfile.email,
-      currentProfile.name,
-      getRepresentedPlayers,
+      currentProfile,
       ownProfile,
-      role,
+      refreshConexiones,
+      refreshRepresentaciones,
     ]),
   );
 
@@ -794,9 +438,12 @@ export function ProfileScreen() {
   }
 
   if (!displayedProfile) {
-    if (!ownProfile && loadingOther) {
+    if ((ownProfile && loadingOwn) || (!ownProfile && loadingOther)) {
       return (
-        <OtherProfileSkeleton onBack={() => goBackFromProfile(navigation)} />
+        <OtherProfileSkeleton
+          title={ownProfile ? 'Mi perfil' : 'Perfil'}
+          onBack={() => goBackFromProfile(navigation)}
+        />
       );
     }
     return (
@@ -891,22 +538,57 @@ export function ProfileScreen() {
         >
           <ProfileContent
             profile={displayedProfile}
-            onStatPress={
-              displayedProfile.kind === 'agent'
-                ? (stat) => {
-                    if (stat.label !== 'Jugadores') {
-                      return;
-                    }
-                    const representativeId = ownProfile
-                      ? authenticatedUserId
-                      : displayedProfile.id;
-                    if (!representativeId || representativeId === 'me') {
-                      return;
-                    }
-                    navigation.push('RepresentedPlayers', { representativeId });
+            onStatPress={(stat) => {
+              if (stat.label === 'Conexiones') {
+                void (async () => {
+                  let userId = ownProfile
+                    ? authenticatedUserId
+                    : displayedProfile.id;
+                  if (ownProfile) {
+                    const { data: userData } = await supabase.auth.getUser();
+                    userId = userData.user?.id?.trim() || null;
                   }
-                : undefined
-            }
+                  if (!userId || userId === 'me') {
+                    return;
+                  }
+                  navigation.push('ConnectionsList', { userId });
+                })();
+                return;
+              }
+              if (stat.label !== 'Representados' && stat.label !== 'Jugadores') {
+                return;
+              }
+              if (displayedProfile.kind !== 'agent') {
+                return;
+              }
+              const representativeId = ownProfile
+                ? authenticatedUserId
+                : displayedProfile.id;
+              if (!representativeId || representativeId === 'me') {
+                return;
+              }
+              navigation.push('RepresentedPlayers', { representativeId });
+            }}
+            onFieldPress={(field) => {
+              if (field.label === 'Representante') {
+                const representativeId = displayedProfile.representativeId;
+                if (!representativeId || representativeId === 'me') {
+                  return;
+                }
+                navigation.push('Profile', { userId: representativeId });
+                return;
+              }
+              if (field.label !== 'Representados' || displayedProfile.kind !== 'agent') {
+                return;
+              }
+              const representativeId = ownProfile
+                ? authenticatedUserId
+                : displayedProfile.id;
+              if (!representativeId || representativeId === 'me') {
+                return;
+              }
+              navigation.push('RepresentedPlayers', { representativeId });
+            }}
             photoBadge={
               ownProfile ? (
                 <Pressable

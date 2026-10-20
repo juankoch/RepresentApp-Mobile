@@ -12,6 +12,7 @@ type ProfileContentProps = {
   nameAccessory?: ReactNode;
   footer?: ReactNode;
   onStatPress?: (stat: ProfileStat) => void;
+  onFieldPress?: (field: { label: string; value: string }) => void;
 };
 
 export function ProfileContent({
@@ -20,6 +21,7 @@ export function ProfileContent({
   nameAccessory,
   footer,
   onStatPress,
+  onFieldPress,
 }: ProfileContentProps) {
   const brand = useBrandColors();
   return (
@@ -68,7 +70,12 @@ export function ProfileContent({
             </>
           );
 
-          if (onStatPress) {
+          if (
+            onStatPress &&
+            (stat.label === 'Conexiones' ||
+              stat.label === 'Representados' ||
+              stat.label === 'Jugadores')
+          ) {
             return (
               <Pressable
                 key={stat.label}
@@ -89,21 +96,44 @@ export function ProfileContent({
       </View>
 
       <View style={styles.fields}>
-        {profile.fields.map((field) => (
-          <View key={field.label} style={styles.fieldRow}>
-            <View style={styles.fieldIcon}>
-              <FontAwesome5
-                name={field.icon}
-                size={14}
-                color={brand.header}
-              />
+        {profile.fields.map((field) => {
+          const row = (
+            <>
+              <View style={styles.fieldIcon}>
+                <FontAwesome5
+                  name={field.icon}
+                  size={14}
+                  color={brand.header}
+                />
+              </View>
+              <Text style={styles.fieldLabel}>{field.label}</Text>
+              <Text style={styles.fieldValue} numberOfLines={1}>
+                {field.value}
+              </Text>
+            </>
+          );
+
+          if (
+            onFieldPress &&
+            (field.label === 'Representante' || field.label === 'Representados')
+          ) {
+            return (
+              <Pressable
+                key={field.label}
+                style={styles.fieldRow}
+                onPress={() => onFieldPress(field)}
+              >
+                {row}
+              </Pressable>
+            );
+          }
+
+          return (
+            <View key={field.label} style={styles.fieldRow}>
+              {row}
             </View>
-            <Text style={styles.fieldLabel}>{field.label}</Text>
-            <Text style={styles.fieldValue} numberOfLines={1}>
-              {field.value}
-            </Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       <Text style={styles.aboutTitle}>Sobre mí</Text>

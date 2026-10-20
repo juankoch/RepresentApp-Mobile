@@ -8,6 +8,7 @@ import { RepresentacionesProvider } from '../context/RepresentacionesContext';
 import { BlockUserScreen } from '../screens/BlockUserScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { ConnectionRequestsScreen } from '../screens/ConnectionRequestsScreen';
+import { ConnectionsListScreen } from '../screens/ConnectionsListScreen';
 import { ConnectionsScreen } from '../screens/ConnectionsScreen';
 import { CreateProfileScreen } from '../screens/CreateProfileScreen';
 import { DeleteAccountScreen } from '../screens/DeleteAccountScreen';
@@ -66,6 +67,10 @@ export function AuthNavigator() {
               component={ConnectionRequestsScreen}
             />
             <Stack.Screen name="Connections" component={ConnectionsScreen} />
+            <Stack.Screen
+              name="ConnectionsList"
+              component={ConnectionsListScreen}
+            />
             <Stack.Screen name="PeopleList" component={PeopleListScreen} />
             <Stack.Screen
               name="RepresentedPlayers"

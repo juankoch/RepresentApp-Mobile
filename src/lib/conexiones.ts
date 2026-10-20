@@ -86,6 +86,44 @@ export function otherUserId(conexion: Conexion, myId: string) {
     : conexion.fk_solicitante;
 }
 
+export function belongsToUser(conexion: Conexion, userId: string) {
+  const id = userId.trim();
+  return conexion.fk_solicitante === id || conexion.fk_receptor === id;
+}
+
+export function connectionPartnerId(conexion: Conexion, userId: string) {
+  const id = userId.trim();
+  if (conexion.fk_solicitante !== id && conexion.fk_receptor !== id) {
+    return null;
+  }
+  return conexion.fk_solicitante === id
+    ? conexion.fk_receptor
+    : conexion.fk_solicitante;
+}
+
+export function partnerIdsFromAcceptedConnections(
+  rows: Conexion[],
+  userId: string,
+) {
+  const id = userId.trim();
+  const ids: string[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    if (row.estado !== 'aceptada' || !belongsToUser(row, id)) {
+      continue;
+    }
+    const otherUserId = connectionPartnerId(row, id);
+    if (!otherUserId || otherUserId === 'me' || otherUserId === id || seen.has(otherUserId)) {
+      continue;
+    }
+    seen.add(otherUserId);
+    ids.push(otherUserId);
+  }
+
+  return ids;
+}
+
 export function isActiveConexionEstado(estado: string) {
   return estado === 'pendiente' || estado === 'aceptada';
 }
@@ -115,6 +153,49 @@ export async function fetchMisConexiones() {
   });
 
   return { myId, rows, error: null };
+}
+
+export async function fetchAcceptedConnections(userId: string) {
+  if (!isRealUserId(userId)) {
+    return [] as Conexion[];
+  }
+
+  const id = userId.trim();
+  const [asSolicitante, asReceptor] = await Promise.all([
+    supabase
+      .from('conexiones')
+      .select(CONEXION_COLUMNS)
+      .eq('estado', 'aceptada')
+      .eq('fk_solicitante', id),
+    supabase
+      .from('conexiones')
+      .select(CONEXION_COLUMNS)
+      .eq('estado', 'aceptada')
+      .eq('fk_receptor', id),
+  ]);
+
+  if (asSolicitante.error) {
+    throw asSolicitante.error;
+  }
+  if (asReceptor.error) {
+    throw asReceptor.error;
+  }
+
+  const seen = new Set<number>();
+  const rows: Conexion[] = [];
+  for (const raw of [...(asSolicitante.data ?? []), ...(asReceptor.data ?? [])]) {
+    const mapped = mapConexion(raw as Record<string, unknown>);
+    if (!mapped || mapped.estado !== 'aceptada' || !belongsToUser(mapped, id)) {
+      continue;
+    }
+    if (seen.has(mapped.id_conexion)) {
+      continue;
+    }
+    seen.add(mapped.id_conexion);
+    rows.push(mapped);
+  }
+
+  return rows;
 }
 
 async function findActiveRelation(myId: string, otherId: string) {

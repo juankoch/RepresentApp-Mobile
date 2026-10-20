@@ -13,6 +13,7 @@ export type AuthStackParamList = {
   Settings: undefined;
   ConnectionRequests: undefined;
   Connections: undefined;
+  ConnectionsList: { userId: string };
   PeopleList: { kind: 'player' | 'agent' };
   RepresentedPlayers: { representativeId: string };
   Notifications: undefined;

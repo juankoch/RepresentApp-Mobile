@@ -31,6 +31,7 @@ export type UserProfile = {
   about: string;
   birthDate?: string;
   conversationId?: string;
+  representativeId?: string;
 };
 
 export function isOwnProfileId(userId?: string) {
@@ -44,18 +45,13 @@ export function createEmptySessionProfile(kind: 'player' | 'agent'): UserProfile
     name: '',
     email: '',
     location: '',
-    stats:
+    stats: [
+      { value: '—', label: 'Conexiones' },
+      { value: '—', label: 'Edad' },
       kind === 'agent'
-        ? [
-            { value: '—', label: 'Jugadores' },
-            { value: '—', label: 'Conexiones' },
-            { value: '—', label: 'Años exp.' },
-          ]
-        : [
-            { value: '—', label: 'Partidos' },
-            { value: '—', label: 'Goles' },
-            { value: '—', label: 'Asistencias' },
-          ],
+        ? { value: '—', label: 'Representados' }
+        : { value: '✕', label: 'Representante' },
+    ],
     fields:
       kind === 'agent'
         ? [
@@ -68,11 +64,11 @@ export function createEmptySessionProfile(kind: 'player' | 'agent'): UserProfile
           ]
         : [
             { icon: 'futbol', label: 'Posición', value: '' },
-            { icon: 'calendar-alt', label: 'Edad', value: '' },
+            { icon: 'flag', label: 'Categoría', value: '' },
             { icon: 'arrows-alt-v', label: 'Altura', value: '' },
             { icon: 'walking', label: 'Pierna hábil', value: '' },
             { icon: 'shield-alt', label: 'Club actual', value: '' },
-            { icon: 'user-tie', label: 'Representante', value: '' },
+            { icon: 'user-tie', label: 'Representante', value: '—' },
           ],
     about: '',
   };

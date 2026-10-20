@@ -278,6 +278,26 @@ export async function getActiveRepresentationForPlayer(playerId: string) {
   return data ? mapRepresentacion(data as Record<string, unknown>) : null;
 }
 
+export async function getAcceptedRepresentationForPlayer(playerId: string) {
+  if (!isRealUserId(playerId)) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('representaciones')
+    .select(REPRESENTACION_COLUMNS)
+    .eq('fk_jugador', playerId.trim())
+    .eq('estado', 'aceptada')
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const mapped = data ? mapRepresentacion(data as Record<string, unknown>) : null;
+  return mapped?.estado === 'aceptada' ? mapped : null;
+}
+
 export async function sendRepresentationRequest(
   otherUserId: string,
 ): Promise<RepresentacionMutationResult> {
