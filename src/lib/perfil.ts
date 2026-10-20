@@ -1,8 +1,5 @@
 import { ProfileField, UserProfile } from '../data/playerProfiles';
-import {
-  fetchAcceptedConnections,
-  partnerIdsFromAcceptedConnections,
-} from './conexiones';
+import { fetchAcceptedConnectionPartnerIds } from './conexiones';
 import { isRemotePhotoUrl } from './fotoPerfil';
 import { piernaHabilToDisplay } from './piernaHabil';
 import {
@@ -210,8 +207,8 @@ async function fetchUsuarioRow(userId: string) {
 
 async function countAcceptedConnections(userId: string) {
   try {
-    const rows = await fetchAcceptedConnections(userId);
-    return partnerIdsFromAcceptedConnections(rows, userId).length;
+    const ids = await fetchAcceptedConnectionPartnerIds(userId);
+    return ids.length;
   } catch {
     return null;
   }

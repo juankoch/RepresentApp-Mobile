@@ -20,11 +20,12 @@ import {
 } from 'react-native';
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
-import { getProfileRoleLabel, UserProfile } from '../data/playerProfiles';
 import {
-  fetchAcceptedConnections,
-  partnerIdsFromAcceptedConnections,
-} from '../lib/conexiones';
+  getProfileRoleLabel,
+  uniqueProfilesById,
+  UserProfile,
+} from '../data/playerProfiles';
+import { fetchAcceptedConnectionPartnerIds } from '../lib/conexiones';
 import { fetchPublicUserProfile } from '../lib/directory';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
@@ -62,15 +63,16 @@ export function ConnectionsListScreen() {
         }
 
         try {
-          const rows = await fetchAcceptedConnections(userId);
-          const ids = partnerIdsFromAcceptedConnections(rows, userId);
+          const ids = await fetchAcceptedConnectionPartnerIds(userId);
           const profiles = await Promise.all(
             ids.map((id) => fetchPublicUserProfile(id)),
           );
           if (!cancelled) {
             setLoadError(false);
             setConnections(
-              profiles.filter((profile): profile is UserProfile => Boolean(profile)),
+              uniqueProfilesById(
+                profiles.filter((profile): profile is UserProfile => Boolean(profile)),
+              ),
             );
           }
         } catch {

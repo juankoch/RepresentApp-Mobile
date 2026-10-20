@@ -80,6 +80,20 @@ export function getUserProfileById(id: string) {
   return otherUserProfiles.find((profile) => profile.id === id);
 }
 
+export function uniqueProfilesById(profiles: UserProfile[]) {
+  const unique: UserProfile[] = [];
+  const seen = new Set<string>();
+  for (const profile of profiles) {
+    const id = profile.id.trim().toLowerCase();
+    if (!id || id === OWN_PROFILE_ID || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    unique.push(profile.id === id ? profile : { ...profile, id });
+  }
+  return unique;
+}
+
 export function getProfilesByKind(kind: ProfileKind) {
   return otherUserProfiles.filter((profile) => profile.kind === kind);
 }

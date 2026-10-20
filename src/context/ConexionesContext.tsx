@@ -13,7 +13,7 @@ import {
   ConexionMutationResult,
   fetchMisConexiones,
   incomingPendingFrom,
-  otherUserId,
+  partnerIdsFromAcceptedConnections,
   rejectConnectionRequest,
   sendConnectionRequest,
 } from '../lib/conexiones';
@@ -64,9 +64,7 @@ export function ConexionesProvider({ children }: { children: ReactNode }) {
     if (!myId) {
       return [];
     }
-    return rows
-      .filter((row) => row.estado === 'aceptada')
-      .map((row) => otherUserId(row, myId));
+    return partnerIdsFromAcceptedConnections(rows, myId);
   }, [myId, rows]);
 
   const value = useMemo<ConexionesContextValue>(
@@ -98,7 +96,8 @@ export function ConexionesProvider({ children }: { children: ReactNode }) {
                 row.fk_receptor === userId,
             ),
         ),
-      isConnected: (userId) => acceptedOtherUserIds.includes(userId),
+      isConnected: (userId) =>
+        acceptedOtherUserIds.includes(userId.trim().toLowerCase()),
       hasIncomingFrom: (userId) => Boolean(incomingPendingFrom(rows, myId, userId)),
       acceptIncomingRequest: async (userId) => {
         const row = incomingPendingFrom(rows, myId, userId);

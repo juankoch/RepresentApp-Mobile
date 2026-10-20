@@ -16,9 +16,14 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { useConexiones } from '../context/ConexionesContext';
-import { getProfileRoleLabel, UserProfile } from '../data/playerProfiles';
+import {
+  getProfileRoleLabel,
+  uniqueProfilesById,
+  UserProfile,
+} from '../data/playerProfiles';
 import { fetchPublicUserProfile } from '../lib/directory';
-import { otherUserId } from '../lib/conexiones';
+import { fetchAcceptedConnectionPartnerIds } from '../lib/conexiones';
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -35,23 +40,25 @@ export function ConnectionsScreen() {
       let cancelled = false;
 
       async function loadConnections() {
-        const { myId, rows } = await refresh();
-        if (!myId) {
+        const { data: userData } = await supabase.auth.getUser();
+        const myId = userData.user?.id?.trim() || null;
+        void refresh();
+        if (!myId || myId === 'me') {
           if (!cancelled) {
             setConnections([]);
           }
           return;
         }
 
-        const ids = rows
-          .filter((row) => row.estado === 'aceptada')
-          .map((row) => otherUserId(row, myId));
+        const ids = await fetchAcceptedConnectionPartnerIds(myId);
         const profiles = await Promise.all(
           ids.map((id) => fetchPublicUserProfile(id)),
         );
         if (!cancelled) {
           setConnections(
-            profiles.filter((profile): profile is UserProfile => Boolean(profile)),
+            uniqueProfilesById(
+              profiles.filter((profile): profile is UserProfile => Boolean(profile)),
+            ),
           );
         }
       }

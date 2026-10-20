@@ -25,8 +25,12 @@ export async function getAuthenticatedUserId() {
 }
 
 function isRealUserId(value: string) {
-  const id = value.trim();
+  const id = normalizeUserId(value);
   return id.length > 0 && id !== 'me';
+}
+
+function normalizeUserId(value: string) {
+  return value.trim().toLowerCase();
 }
 
 export async function areUsersConnected(userId: string, otherUserId: string) {
@@ -87,25 +91,28 @@ export function otherUserId(conexion: Conexion, myId: string) {
 }
 
 export function belongsToUser(conexion: Conexion, userId: string) {
-  const id = userId.trim();
-  return conexion.fk_solicitante === id || conexion.fk_receptor === id;
+  const id = normalizeUserId(userId);
+  return (
+    normalizeUserId(conexion.fk_solicitante) === id ||
+    normalizeUserId(conexion.fk_receptor) === id
+  );
 }
 
 export function connectionPartnerId(conexion: Conexion, userId: string) {
-  const id = userId.trim();
-  if (conexion.fk_solicitante !== id && conexion.fk_receptor !== id) {
+  const id = normalizeUserId(userId);
+  const solicitante = normalizeUserId(conexion.fk_solicitante);
+  const receptor = normalizeUserId(conexion.fk_receptor);
+  if (solicitante !== id && receptor !== id) {
     return null;
   }
-  return conexion.fk_solicitante === id
-    ? conexion.fk_receptor
-    : conexion.fk_solicitante;
+  return solicitante === id ? receptor : solicitante;
 }
 
 export function partnerIdsFromAcceptedConnections(
   rows: Conexion[],
   userId: string,
 ) {
-  const id = userId.trim();
+  const id = normalizeUserId(userId);
   const ids: string[] = [];
   const seen = new Set<string>();
 
@@ -122,6 +129,11 @@ export function partnerIdsFromAcceptedConnections(
   }
 
   return ids;
+}
+
+export async function fetchAcceptedConnectionPartnerIds(userId: string) {
+  const rows = await fetchAcceptedConnections(userId);
+  return partnerIdsFromAcceptedConnections(rows, userId);
 }
 
 export function isActiveConexionEstado(estado: string) {
@@ -181,17 +193,18 @@ export async function fetchAcceptedConnections(userId: string) {
     throw asReceptor.error;
   }
 
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   const rows: Conexion[] = [];
   for (const raw of [...(asSolicitante.data ?? []), ...(asReceptor.data ?? [])]) {
     const mapped = mapConexion(raw as Record<string, unknown>);
     if (!mapped || mapped.estado !== 'aceptada' || !belongsToUser(mapped, id)) {
       continue;
     }
-    if (seen.has(mapped.id_conexion)) {
+    const rowKey = String(mapped.id_conexion);
+    if (seen.has(rowKey)) {
       continue;
     }
-    seen.add(mapped.id_conexion);
+    seen.add(rowKey);
     rows.push(mapped);
   }
 
