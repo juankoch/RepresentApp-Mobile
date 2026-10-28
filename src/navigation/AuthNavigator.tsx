@@ -1,6 +1,7 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { ConexionesProvider } from '../context/ConexionesContext';
+import { MensajesUnreadProvider } from '../context/MensajesUnreadContext';
 import { PlayerMessagesProvider } from '../context/PlayerMessagesContext';
 import { PlayerProfileProvider } from '../context/PlayerProfileContext';
 import { PlayerTrialsProvider } from '../context/PlayerTrialsContext';
@@ -42,6 +43,7 @@ export function AuthNavigator() {
       <RepresentacionesProvider>
       <PlayerTrialsProvider>
         <PlayerMessagesProvider>
+        <MensajesUnreadProvider>
           <Stack.Navigator
             initialRouteName="Login"
             screenOptions={{ headerShown: false }}
@@ -85,6 +87,7 @@ export function AuthNavigator() {
             <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
             <Stack.Screen name="Highlights" component={HighlightsScreen} />
           </Stack.Navigator>
+        </MensajesUnreadProvider>
         </PlayerMessagesProvider>
       </PlayerTrialsProvider>
       </RepresentacionesProvider>

@@ -26,7 +26,7 @@ import {
   UserProfile,
 } from '../data/playerProfiles';
 import { fetchAcceptedConnectionPartnerIds } from '../lib/conexiones';
-import { fetchPublicUserProfile } from '../lib/directory';
+import { fetchPublicPeopleByIds } from '../lib/directory';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -64,16 +64,10 @@ export function ConnectionsListScreen() {
 
         try {
           const ids = await fetchAcceptedConnectionPartnerIds(userId);
-          const profiles = await Promise.all(
-            ids.map((id) => fetchPublicUserProfile(id)),
-          );
+          const profiles = await fetchPublicPeopleByIds(ids);
           if (!cancelled) {
             setLoadError(false);
-            setConnections(
-              uniqueProfilesById(
-                profiles.filter((profile): profile is UserProfile => Boolean(profile)),
-              ),
-            );
+            setConnections(uniqueProfilesById(profiles));
           }
         } catch {
           if (!cancelled) {

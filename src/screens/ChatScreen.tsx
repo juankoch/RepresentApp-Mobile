@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
+import { useMensajesUnread } from '../context/MensajesUnreadContext';
 import { ChatMessage } from '../data/playerMessages';
 import { getProfileRoleLabel } from '../data/playerProfiles';
 import { fetchPublicUserProfile } from '../lib/directory';
@@ -38,6 +39,7 @@ export function ChatScreen() {
   const brand = useBrandColors();
   const route = useRoute<RouteProp<AuthStackParamList, 'Chat'>>();
   const conversationId = route.params.conversationId;
+  const { refresh: refreshUnread } = useMensajesUnread();
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [unavailable, setUnavailable] = useState(false);
@@ -67,7 +69,11 @@ export function ChatScreen() {
     setUnavailable(false);
     setMessages(result.data);
 
-    void markConversationAsRead(conversationId, userId);
+    void markConversationAsRead(conversationId, userId).then((marked) => {
+      if (marked.ok) {
+        void refreshUnread();
+      }
+    });
 
     const inbox = await getUserConversations(userId);
     if (!inbox.ok) {
@@ -84,7 +90,7 @@ export function ChatScreen() {
       setRole(getProfileRoleLabel(profile.kind));
       setAvatarUrl(profile.photoUrl);
     }
-  }, [conversationId]);
+  }, [conversationId, refreshUnread]);
 
   useFocusEffect(
     useCallback(() => {

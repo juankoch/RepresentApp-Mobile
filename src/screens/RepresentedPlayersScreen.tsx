@@ -22,7 +22,7 @@ import {
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { useRepresentaciones } from '../context/RepresentacionesContext';
 import { getProfileRoleLabel, UserProfile } from '../data/playerProfiles';
-import { fetchPublicUserProfile } from '../lib/directory';
+import { fetchPublicPeopleByIds } from '../lib/directory';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -63,13 +63,9 @@ export function RepresentedPlayersScreen() {
             .filter((row) => row.estado === 'aceptada')
             .map((row) => row.fk_jugador)
             .filter((id) => id && id !== 'me');
-          const profiles = await Promise.all(
-            acceptedPlayerIds.map((id) => fetchPublicUserProfile(id)),
-          );
+          const profiles = await fetchPublicPeopleByIds(acceptedPlayerIds);
           if (!cancelled) {
-            setPlayers(
-              profiles.filter((profile): profile is UserProfile => Boolean(profile)),
-            );
+            setPlayers(profiles);
           }
         } catch {
           if (!cancelled) {

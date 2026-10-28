@@ -18,7 +18,7 @@ import {
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { useConexiones } from '../context/ConexionesContext';
 import { getProfileRoleLabel, UserProfile } from '../data/playerProfiles';
-import { fetchPublicUserProfile } from '../lib/directory';
+import { fetchPublicPeopleByIds } from '../lib/directory';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -48,13 +48,9 @@ export function ConnectionRequestsScreen() {
             (row) => row.estado === 'pendiente' && row.fk_receptor === myId,
           )
           .map((row) => row.fk_solicitante);
-        const profiles = await Promise.all(
-          ids.map((id) => fetchPublicUserProfile(id)),
-        );
+        const profiles = await fetchPublicPeopleByIds(ids);
         if (!cancelled) {
-          setRequests(
-            profiles.filter((profile): profile is UserProfile => Boolean(profile)),
-          );
+          setRequests(profiles);
         }
       }
 

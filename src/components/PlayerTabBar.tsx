@@ -1,8 +1,10 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useCallback } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useMensajesUnread } from '../context/MensajesUnreadContext';
 import { OWN_PROFILE_ID } from '../data/playerProfiles';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -16,6 +18,13 @@ export function PlayerTabBar({ activeTab = 'home' }: PlayerTabBarProps) {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
+  const { unreadCount, refresh } = useMensajesUnread();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   return (
     <View style={[styles.tabBar, { backgroundColor: brand.header }]}>
@@ -50,9 +59,11 @@ export function PlayerTabBar({ activeTab = 'home' }: PlayerTabBarProps) {
             size={18}
             color={activeTab === 'messages' ? brand.accent : brand.muted}
           />
-          <View style={styles.tabBadge}>
-            <Text style={styles.badgeText}>1</Text>
-          </View>
+          {unreadCount > 0 ? (
+            <View style={styles.tabBadge}>
+              <Text style={styles.badgeText}>{unreadCount}</Text>
+            </View>
+          ) : null}
         </View>
         <Text
           style={[
@@ -136,6 +147,7 @@ const styles = StyleSheet.create({
     right: -10,
     minWidth: 16,
     height: 16,
+    paddingHorizontal: 4,
     borderRadius: 8,
     backgroundColor: colors.homeBadge,
     alignItems: 'center',

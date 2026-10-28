@@ -313,6 +313,57 @@ export async function getUserConversations(
   return { ok: true, data: items };
 }
 
+export async function getUnreadMessageCount(): Promise<MensajesResult<number>> {
+  const { data, error } = await supabase.auth.getUser();
+  const userId = data.user?.id?.trim() || '';
+  if (error || !isRealUserId(userId)) {
+    return { ok: true, data: 0 };
+  }
+
+  const [asA, asB] = await Promise.all([
+    supabase
+      .from('conversaciones')
+      .select('id_conversacion')
+      .eq('fk_usuario_a', userId),
+    supabase
+      .from('conversaciones')
+      .select('id_conversacion')
+      .eq('fk_usuario_b', userId),
+  ]);
+
+  if (asA.error) {
+    return { ok: false, message: asA.error.message };
+  }
+  if (asB.error) {
+    return { ok: false, message: asB.error.message };
+  }
+
+  const conversationIds = [
+    ...new Set(
+      [...(asA.data ?? []), ...(asB.data ?? [])]
+        .map((row) => bigintId((row as { id_conversacion?: unknown }).id_conversacion))
+        .filter((id): id is number => id != null),
+    ),
+  ];
+
+  if (conversationIds.length === 0) {
+    return { ok: true, data: 0 };
+  }
+
+  const { count, error: countError } = await supabase
+    .from('mensajes')
+    .select('id_mensaje', { count: 'exact', head: true })
+    .eq('leido', false)
+    .neq('fk_emisor', userId)
+    .in('fk_conversacion', conversationIds);
+
+  if (countError) {
+    return { ok: false, message: countError.message };
+  }
+
+  return { ok: true, data: count ?? 0 };
+}
+
 export async function getConversationMessages(
   conversationId: string,
   userId: string,

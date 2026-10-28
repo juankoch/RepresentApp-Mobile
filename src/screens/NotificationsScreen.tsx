@@ -17,7 +17,7 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { UserProfile } from '../data/playerProfiles';
-import { fetchPublicUserProfile } from '../lib/directory';
+import { fetchPublicPeopleByIds } from '../lib/directory';
 import {
   fetchMyRepresentationNotifications,
   markAllRepresentationNotificationsAsRead,
@@ -67,18 +67,31 @@ export function NotificationsScreen() {
       return;
     }
 
-    const hydrated = await Promise.all(
-      result.data.map(async (item) => {
-        const sender = await fetchPublicUserProfile(item.fk_emisor);
-        return {
-          ...item,
-          sender: sender ?? undefined,
-        } satisfies NotificationRow;
-      }),
-    );
     if (!cancelled?.current) {
-      setNotifications(hydrated);
+      setNotifications(
+        result.data.map((item) => ({ ...item }) satisfies NotificationRow),
+      );
     }
+
+    const people = await fetchPublicPeopleByIds(
+      result.data.map((item) => item.fk_emisor),
+    );
+    if (cancelled?.current) {
+      return;
+    }
+    const peopleById = new Map<string, (typeof people)[number]>();
+    for (const profile of people) {
+      peopleById.set(profile.id, profile);
+      peopleById.set(profile.id.toLowerCase(), profile);
+    }
+    setNotifications(
+      result.data.map((item) => ({
+        ...item,
+        sender:
+          peopleById.get(item.fk_emisor) ||
+          peopleById.get(item.fk_emisor.toLowerCase()),
+      }) satisfies NotificationRow),
+    );
   }, []);
 
   useFocusEffect(

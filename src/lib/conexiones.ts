@@ -149,20 +149,55 @@ function mutationErrorMessage(error: { message?: string } | null, fallback: stri
 }
 
 export async function fetchMisConexiones() {
-  const myId = await getAuthenticatedUserId();
-  if (!myId) {
-    return { myId: null as string | null, rows: [] as Conexion[], error: null };
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  const myId = user?.id?.trim() || null;
+  if (userError || !myId || myId === 'me') {
+    return {
+      myId: null as string | null,
+      rows: [] as Conexion[],
+      error: userError ?? null,
+    };
   }
 
-  const { data, error } = await supabase.from('conexiones').select(CONEXION_COLUMNS);
-  if (error) {
-    return { myId, rows: [] as Conexion[], error };
+  const [asSolicitante, asReceptor] = await Promise.all([
+    supabase
+      .from('conexiones')
+      .select(CONEXION_COLUMNS)
+      .eq('fk_solicitante', myId),
+    supabase
+      .from('conexiones')
+      .select(CONEXION_COLUMNS)
+      .eq('fk_receptor', myId),
+  ]);
+
+  if (asSolicitante.error) {
+    return { myId, rows: [] as Conexion[], error: asSolicitante.error };
+  }
+  if (asReceptor.error) {
+    return { myId, rows: [] as Conexion[], error: asReceptor.error };
   }
 
-  const rows = ((data ?? []) as Record<string, unknown>[]).flatMap((row) => {
-    const mapped = mapConexion(row);
-    return mapped ? [mapped] : [];
-  });
+  const seen = new Set<string>();
+  const rows: Conexion[] = [];
+  for (const raw of [...(asSolicitante.data ?? []), ...(asReceptor.data ?? [])]) {
+    const mapped = mapConexion(raw as Record<string, unknown>);
+    if (
+      !mapped ||
+      !belongsToUser(mapped, myId) ||
+      (mapped.estado !== 'aceptada' && mapped.estado !== 'pendiente')
+    ) {
+      continue;
+    }
+    const rowKey = String(mapped.id_conexion);
+    if (seen.has(rowKey)) {
+      continue;
+    }
+    seen.add(rowKey);
+    rows.push(mapped);
+  }
 
   return { myId, rows, error: null };
 }

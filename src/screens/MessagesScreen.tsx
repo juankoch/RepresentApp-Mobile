@@ -18,9 +18,10 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { useMensajesUnread } from '../context/MensajesUnreadContext';
 import { Conversation } from '../data/playerMessages';
 import { getProfileRoleLabel } from '../data/playerProfiles';
-import { fetchPublicUserProfile } from '../lib/directory';
+import { fetchPublicPeopleByIds } from '../lib/directory';
 import { deleteConversation, getUserConversations } from '../lib/mensajes';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
@@ -32,6 +33,7 @@ export function MessagesScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
+  const { refresh: refreshUnread } = useMensajesUnread();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [openRowId, setOpenRowId] = useState<string | null>(null);
@@ -55,11 +57,41 @@ export function MessagesScreen() {
       return;
     }
 
-    const hydrated = await Promise.all(
-      result.data.map(async (item) => {
+    setConversations((current) => {
+      const previous = new Map(current.map((item) => [item.id, item]));
+      return result.data.map((item) => {
+        const prev = previous.get(item.id);
+        return {
+          id: item.id,
+          profileId: item.profileId,
+          name: prev?.name || '',
+          role: prev?.role || '',
+          preview: item.preview,
+          time: item.time,
+          unread: item.unread,
+          avatarUrl: prev?.avatarUrl,
+          messages: [],
+        } satisfies Conversation;
+      });
+    });
+
+    const people = await fetchPublicPeopleByIds(
+      result.data
+        .map((item) => item.profileId)
+        .filter((id): id is string => Boolean(id)),
+    );
+    const peopleById = new Map<string, (typeof people)[number]>();
+    for (const profile of people) {
+      peopleById.set(profile.id, profile);
+      peopleById.set(profile.id.toLowerCase(), profile);
+    }
+
+    setConversations(
+      result.data.map((item) => {
         const profile = item.profileId
-          ? await fetchPublicUserProfile(item.profileId)
-          : null;
+          ? peopleById.get(item.profileId) ||
+            peopleById.get(item.profileId.toLowerCase())
+          : undefined;
         return {
           id: item.id,
           profileId: item.profileId,
@@ -73,9 +105,8 @@ export function MessagesScreen() {
         } satisfies Conversation;
       }),
     );
-
-    setConversations(hydrated);
-  }, []);
+    void refreshUnread();
+  }, [refreshUnread]);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,6 +132,7 @@ export function MessagesScreen() {
       current.filter((conversation) => conversation.id !== conversationId),
     );
     setOpenRowId(null);
+    void refreshUnread();
   }
 
   return (

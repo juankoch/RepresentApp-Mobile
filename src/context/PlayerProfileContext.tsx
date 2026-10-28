@@ -213,7 +213,7 @@ export async function fetchAuthenticatedUserIdentity() {
 
   const { data: usuario, error: usuarioError } = await supabase
     .from('usuarios')
-    .select('nombre, apellido, email, foto_perfil')
+    .select('nombre, apellido, email, foto_perfil, es_premium')
     .eq('id_usuario', user.id)
     .maybeSingle();
 
@@ -226,17 +226,12 @@ export async function fetchAuthenticatedUserIdentity() {
     apellido?: unknown;
     email?: unknown;
     foto_perfil?: unknown;
+    es_premium?: unknown;
   } | null;
 
   const firstName = textValue(usuarioRow?.nombre);
   const lastName = textValue(usuarioRow?.apellido);
   const photoRaw = textValue(usuarioRow?.foto_perfil);
-
-  const { data: premiumRow } = await supabase
-    .from('usuarios')
-    .select('es_premium')
-    .eq('id_usuario', user.id)
-    .maybeSingle();
 
   return {
     identity: {
@@ -244,8 +239,7 @@ export async function fetchAuthenticatedUserIdentity() {
       firstName,
       email: textValue(usuarioRow?.email) || user.email?.trim() || '',
       photoUrl: isRemotePhotoUrl(photoRaw) ? photoRaw : undefined,
-      isPremium:
-        (premiumRow as { es_premium?: unknown } | null)?.es_premium === true,
+      isPremium: isPremiumFlag(usuarioRow?.es_premium),
     },
     error: null,
   };

@@ -22,16 +22,13 @@ import { useBrandColors } from '../theme/useBrandColors';
 
 type IconName = ComponentProps<typeof FontAwesome5>['name'];
 
-const benefits: {
+type PremiumBenefit = {
   icon: IconName;
   title: string;
   subtitle: string;
-}[] = [
-  {
-    icon: 'video',
-    title: 'Highlights de video',
-    subtitle: 'Subí tus mejores jugadas y destacá tu perfil.',
-  },
+};
+
+const sharedBenefits: PremiumBenefit[] = [
   {
     icon: 'eye',
     title: 'Mayor visibilidad de tu perfil',
@@ -54,12 +51,28 @@ const benefits: {
   },
 ];
 
+const playerExclusiveBenefit: PremiumBenefit = {
+  icon: 'video',
+  title: 'Highlights de video',
+  subtitle: 'Subí tus mejores jugadas y destacá tu perfil.',
+};
+
+const agentExclusiveBenefit: PremiumBenefit = {
+  icon: 'briefcase',
+  title: 'CRM interno',
+  subtitle: 'Gestioná a tus jugadores representados en un espacio propio.',
+};
+
 export function PremiumScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
-  const { isPremium, activatePremium } = usePlayerProfile();
+  const { isPremium, activatePremium, role } = usePlayerProfile();
   const [activating, setActivating] = useState(false);
+  const isAgent = role === 'agent';
+  const benefits = isAgent
+    ? [agentExclusiveBenefit, ...sharedBenefits]
+    : [playerExclusiveBenefit, ...sharedBenefits];
 
   async function handleActivatePremium() {
     if (activating) {
@@ -111,7 +124,9 @@ export function PremiumScreen() {
             <Text style={styles.heroKicker}>RepresentApp Premium</Text>
             <Text style={styles.heroTitle}>Llevá tu carrera a otro nivel</Text>
             <Text style={styles.heroSubtitle}>
-              Accedé a más oportunidades y conectate con el mercado.
+              {isAgent
+                ? 'Accedé a un CRM interno y a más herramientas para gestionar jugadores.'
+                : 'Subí highlights de video y conectate con más oportunidades.'}
             </Text>
           </View>
 
@@ -143,13 +158,15 @@ export function PremiumScreen() {
                 <FontAwesome5 name="check" size={14} color={colors.homeHeader} />
                 <Text style={styles.ctaDoneText}>Premium activado</Text>
               </View>
-              <Pressable
-                style={styles.secondaryCta}
-                onPress={() => navigation.push('Highlights')}
-              >
-                <FontAwesome5 name="video" size={14} color="#FFFFFF" />
-                <Text style={styles.ctaText}>Ver mis highlights</Text>
-              </Pressable>
+              {isAgent ? null : (
+                <Pressable
+                  style={styles.secondaryCta}
+                  onPress={() => navigation.push('Highlights')}
+                >
+                  <FontAwesome5 name="video" size={14} color="#FFFFFF" />
+                  <Text style={styles.ctaText}>Ver mis highlights</Text>
+                </Pressable>
+              )}
             </>
           ) : (
             <Pressable

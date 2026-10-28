@@ -21,7 +21,7 @@ import {
   uniqueProfilesById,
   UserProfile,
 } from '../data/playerProfiles';
-import { fetchPublicUserProfile } from '../lib/directory';
+import { fetchPublicPeopleByIds } from '../lib/directory';
 import { fetchAcceptedConnectionPartnerIds } from '../lib/conexiones';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
@@ -51,15 +51,9 @@ export function ConnectionsScreen() {
         }
 
         const ids = await fetchAcceptedConnectionPartnerIds(myId);
-        const profiles = await Promise.all(
-          ids.map((id) => fetchPublicUserProfile(id)),
-        );
+        const profiles = await fetchPublicPeopleByIds(ids);
         if (!cancelled) {
-          setConnections(
-            uniqueProfilesById(
-              profiles.filter((profile): profile is UserProfile => Boolean(profile)),
-            ),
-          );
+          setConnections(uniqueProfilesById(profiles));
         }
       }
 

@@ -1,6 +1,5 @@
 import { UserProfile } from '../data/playerProfiles';
 import { isRemotePhotoUrl } from './fotoPerfil';
-import { fetchProfileByUserId, profileToUserProfile } from './perfil';
 import { supabase } from './supabase';
 
 export type DirectoryPerson = {
@@ -341,7 +340,134 @@ export async function searchDirectory(query: string) {
   return [...people, ...clubResults];
 }
 
-export async function fetchPublicUserProfile(userId: string): Promise<UserProfile | null> {
-  const loaded = await fetchProfileByUserId(userId);
-  return loaded ? profileToUserProfile(loaded) : null;
+function uniqueRealUserIds(userIds: string[]) {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const value of userIds) {
+    const id = value.trim();
+    if (!id || id === 'me') {
+      continue;
+    }
+    const key = id.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    ids.push(id);
+  }
+  return ids;
+}
+
+export async function fetchPublicPeopleByIds(
+  userIds: string[],
+): Promise<UserProfile[]> {
+  const ids = uniqueRealUserIds(userIds);
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const [usuarios, playerResult, agentResult] = await Promise.all([
+    fetchUsuariosByIds(ids),
+    supabase
+      .from('perfiles_jugador')
+      .select('id_usuario, fk_posicion, categoria')
+      .in('id_usuario', ids),
+    supabase
+      .from('perfiles_representante')
+      .select('id_usuario, empresa')
+      .in('id_usuario', ids),
+  ]);
+
+  if (playerResult.error) {
+    throw playerResult.error;
+  }
+  if (agentResult.error) {
+    throw agentResult.error;
+  }
+
+  const players = new Map<string, { fk_posicion?: string | number | null; categoria?: unknown }>();
+  for (const row of playerResult.data ?? []) {
+    const record = row as {
+      id_usuario?: unknown;
+      fk_posicion?: string | number | null;
+      categoria?: unknown;
+    };
+    const id = textValue(record.id_usuario) || String(record.id_usuario ?? '');
+    if (id) {
+      players.set(id, record);
+    }
+  }
+
+  const agents = new Map<string, { empresa?: unknown }>();
+  for (const row of agentResult.data ?? []) {
+    const record = row as { id_usuario?: unknown; empresa?: unknown };
+    const id = textValue(record.id_usuario) || String(record.id_usuario ?? '');
+    if (id) {
+      agents.set(id, record);
+    }
+  }
+
+  const needsPositions = [...players.values()].some((row) => row.fk_posicion != null);
+  const posiciones = needsPositions
+    ? await fetchCatalog('posiciones', 'id_posicion')
+    : new Map<string, string>();
+
+  const usuarioById = new Map<string, Record<string, unknown>>();
+  for (const [key, value] of usuarios) {
+    usuarioById.set(key, value);
+    usuarioById.set(key.toLowerCase(), value);
+  }
+  const playerById = new Map(players);
+  for (const [key, value] of players) {
+    playerById.set(key.toLowerCase(), value);
+  }
+  const agentById = new Map(agents);
+  for (const [key, value] of agents) {
+    agentById.set(key.toLowerCase(), value);
+  }
+
+  const profiles: UserProfile[] = [];
+  for (const id of ids) {
+    const usuario = usuarioById.get(id) ?? usuarioById.get(id.toLowerCase());
+    if (!usuario) {
+      continue;
+    }
+    const player = playerById.get(id) ?? playerById.get(id.toLowerCase());
+    const agent = agentById.get(id) ?? agentById.get(id.toLowerCase());
+    const kind: 'player' | 'agent' = player ? 'player' : agent ? 'agent' : 'player';
+    const firstName = textValue(usuario.nombre);
+    const lastName = textValue(usuario.apellido);
+    const name = `${firstName} ${lastName}`.trim();
+    if (!name) {
+      continue;
+    }
+    const photoRaw = textValue(usuario.foto_perfil);
+    const location = locationFromUsuario(usuario.pais, usuario.ciudad);
+    const position =
+      player?.fk_posicion != null ? posiciones.get(String(player.fk_posicion)) || '' : '';
+    const agency = textValue(agent?.empresa);
+
+    profiles.push({
+      id,
+      kind,
+      name,
+      location,
+      photoUrl: isRemotePhotoUrl(photoRaw) ? photoRaw : undefined,
+      stats: [],
+      fields:
+        kind === 'agent'
+          ? [{ icon: 'building', label: 'Agencia', value: agency }]
+          : [{ icon: 'futbol', label: 'Posición', value: position }],
+      about: '',
+    });
+  }
+
+  return profiles;
+}
+
+export async function fetchPublicUserProfile(
+  userId: string,
+): Promise<UserProfile | null> {
+  const profiles = await fetchPublicPeopleByIds([userId]);
+  return profiles[0] ?? null;
 }
