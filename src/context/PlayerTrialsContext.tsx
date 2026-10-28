@@ -1,18 +1,6 @@
-import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
-
-import {
-  getPlayerTrialById,
-  PlayerTrial,
-  playerTrials,
-} from '../data/playerTrials';
+import { createContext, ReactNode, useContext, useMemo } from 'react';
 
 type PlayerTrialsContextValue = {
-  appliedTrialIds: string[];
-  applyToTrial: (trialId: string) => void;
-  hasApplied: (trialId: string) => boolean;
-  publishedTrials: PlayerTrial[];
-  publishTrial: (trial: Omit<PlayerTrial, 'id' | 'crest' | 'hero'>) => void;
-  getTrial: (trialId: string) => PlayerTrial | undefined;
   resetSession: () => void;
 };
 
@@ -21,42 +9,11 @@ const PlayerTrialsContext = createContext<PlayerTrialsContextValue | undefined>(
 );
 
 export function PlayerTrialsProvider({ children }: { children: ReactNode }) {
-  const [appliedTrialIds, setAppliedTrialIds] = useState<string[]>([]);
-  const [publishedTrials, setPublishedTrials] = useState<PlayerTrial[]>([]);
-
   const value = useMemo<PlayerTrialsContextValue>(
     () => ({
-      appliedTrialIds,
-      applyToTrial: (trialId: string) => {
-        setAppliedTrialIds((current) =>
-          current.includes(trialId) ? current : [...current, trialId],
-        );
-      },
-      hasApplied: (trialId: string) => appliedTrialIds.includes(trialId),
-      publishedTrials,
-      publishTrial: (trial) => {
-        const id = `published-${Date.now()}`;
-        setPublishedTrials((current) => [
-          {
-            ...trial,
-            id,
-            status: 'active',
-            applicants: 0,
-            applicantIds: [],
-          },
-          ...current,
-        ]);
-      },
-      getTrial: (trialId) =>
-        publishedTrials.find((trial) => trial.id === trialId) ??
-        getPlayerTrialById(trialId) ??
-        playerTrials.find((trial) => trial.id === trialId),
-      resetSession: () => {
-        setAppliedTrialIds([]);
-        setPublishedTrials([]);
-      },
+      resetSession: () => undefined,
     }),
-    [appliedTrialIds, publishedTrials],
+    [],
   );
 
   return (

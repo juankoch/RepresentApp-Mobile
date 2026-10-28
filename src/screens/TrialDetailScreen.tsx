@@ -1,8 +1,11 @@
 import { FontAwesome5 } from '@expo/vector-icons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Platform,
   Pressable,
@@ -15,29 +18,215 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
-import { usePlayerTrials } from '../context/PlayerTrialsContext';
+import { UserProfile } from '../data/playerProfiles';
+import {
+  attachApplicantProfiles,
+  attachPublisherProfiles,
+  createPostulacion,
+  fetchMisPostulaciones,
+  fetchOportunidadById,
+  fetchPostulacionesForOportunidad,
+  formatFechaEvento,
+  formatFechaPublicacion,
+  formatOportunidadEstado,
+  formatOportunidadTipo,
+  formatPostulacionEstado,
+  Oportunidad,
+  Postulacion,
+  updatePostulacionEstado,
+} from '../lib/oportunidades';
+import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
+
+type ApplicantRow = {
+  postulacion: Postulacion;
+  profile: UserProfile | null;
+};
 
 export function TrialDetailScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const route = useRoute<RouteProp<AuthStackParamList, 'TrialDetail'>>();
-  const { applyToTrial, hasApplied, getTrial } = usePlayerTrials();
-  const { role, getProfile } = usePlayerProfile();
+  const { role } = usePlayerProfile();
   const brand = useBrandColors();
-  const trial = getTrial(route.params.trialId);
   const isAgent = role === 'agent';
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState('');
+  const [oportunidad, setOportunidad] = useState<Oportunidad | null>(null);
+  const [representativeName, setRepresentativeName] = useState('Representante');
+  const [representativePhotoUrl, setRepresentativePhotoUrl] = useState<
+    string | undefined
+  >(undefined);
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [applied, setApplied] = useState(false);
+  const [applyNotice, setApplyNotice] = useState('');
+  const [applicants, setApplicants] = useState<ApplicantRow[]>([]);
+  const [respondingId, setRespondingId] = useState<number | null>(null);
 
-  if (!trial) {
+  const loadDetail = useCallback(async () => {
+    setLoading(true);
+    setError('');
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const userId = authData.user?.id?.trim() || '';
+    if (authError || !userId || userId === 'me') {
+      setOportunidad(null);
+      setError(authError?.message || 'No hay un usuario autenticado.');
+      setLoading(false);
+      return;
+    }
+    setCurrentUserId(userId);
+
+    const result = await fetchOportunidadById(route.params.trialId);
+    if (!result.ok) {
+      setOportunidad(null);
+      setError(result.message);
+      setLoading(false);
+      return;
+    }
+    if (!result.data) {
+      setOportunidad(null);
+      setLoading(false);
+      return;
+    }
+
+    const next = result.data;
+    setOportunidad(next);
+
+    const [withPublisher] = await attachPublisherProfiles([next]);
+    setRepresentativeName(withPublisher?.representativeName || 'Representante');
+    setRepresentativePhotoUrl(withPublisher?.representativePhotoUrl);
+
+    const isOwner = next.fk_representante === userId;
+    if (isOwner) {
+      const postulaciones = await fetchPostulacionesForOportunidad(
+        next.id_oportunidad,
+      );
+      if (!postulaciones.ok) {
+        setApplicants([]);
+        setError(postulaciones.message);
+        setLoading(false);
+        return;
+      }
+      setApplicants(await attachApplicantProfiles(postulaciones.data));
+      setLoading(false);
+      return;
+    }
+
+    if (!isAgent) {
+      const mine = await fetchMisPostulaciones();
+      if (!mine.ok) {
+        setError(mine.message);
+        setLoading(false);
+        return;
+      }
+      setApplied(
+        mine.data.some((row) => row.fk_oportunidad === next.id_oportunidad),
+      );
+    }
+
+    setLoading(false);
+  }, [isAgent, route.params.trialId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadDetail();
+    }, [loadDetail]),
+  );
+
+  async function handleApply() {
+    if (!oportunidad || applying || applied) {
+      return;
+    }
+
+    setApplying(true);
+    setApplyNotice('');
+    const result = await createPostulacion(oportunidad.id_oportunidad);
+    setApplying(false);
+
+    if (!result.ok) {
+      Alert.alert('No se pudo postular', result.message);
+      return;
+    }
+
+    setApplied(true);
+    if (result.data.alreadyApplied) {
+      setApplyNotice('Ya estás postulado');
+      Alert.alert('Ya estás postulado', 'Ya enviaste una postulación a esta prueba.');
+      return;
+    }
+
+    setApplyNotice('Postulación realizada');
+    Alert.alert('Postulación realizada', 'Tu postulación fue enviada.');
+  }
+
+  async function handleRespond(
+    postulacionId: number,
+    estado: 'aceptada' | 'rechazada',
+  ) {
+    if (respondingId != null) {
+      return;
+    }
+
+    setRespondingId(postulacionId);
+    const result = await updatePostulacionEstado(postulacionId, estado);
+    setRespondingId(null);
+
+    if (!result.ok) {
+      Alert.alert(
+        estado === 'aceptada'
+          ? 'No se pudo aceptar'
+          : 'No se pudo rechazar',
+        result.message,
+      );
+      return;
+    }
+
+    setApplicants((current) =>
+      current.map((item) =>
+        item.postulacion.id_postulacion === postulacionId
+          ? { ...item, postulacion: result.data }
+          : item,
+      ),
+    );
+  }
+
+  function openProfile(userId: string) {
+    const id = userId.trim();
+    if (!id || id === 'me') {
+      return;
+    }
+    navigation.push('Profile', { userId: id });
+  }
+
+  if (loading) {
     return (
       <View style={[styles.root, { backgroundColor: brand.header }]}>
         <StatusBar style="light" />
         <View style={styles.missing}>
-          <Text style={styles.missingText}>No encontramos esta prueba.</Text>
+          <ActivityIndicator color={brand.header} />
+          <Text style={styles.missingText}>Cargando prueba...</Text>
+        </View>
+        <PlayerTabBar />
+      </View>
+    );
+  }
+
+  if (!oportunidad) {
+    return (
+      <View style={[styles.root, { backgroundColor: brand.header }]}>
+        <StatusBar style="light" />
+        <View style={styles.missing}>
+          <Text style={styles.missingText}>
+            {error || 'No encontramos esta prueba.'}
+          </Text>
           <Pressable onPress={() => navigation.navigate('Trials')}>
-            <Text style={styles.seeMore}>Volver a Pruebas</Text>
+            <Text style={[styles.seeMore, { color: brand.header }]}>
+              Volver a Pruebas
+            </Text>
           </Pressable>
         </View>
         <PlayerTabBar />
@@ -45,7 +234,11 @@ export function TrialDetailScreen() {
     );
   }
 
-  const applied = hasApplied(trial.id);
+  const isOwner =
+    isAgent &&
+    Boolean(currentUserId) &&
+    oportunidad.fk_representante === currentUserId;
+  const publishedLabel = formatFechaPublicacion(oportunidad.fecha_publicacion);
 
   return (
     <View style={[styles.root, { backgroundColor: brand.header }]}>
@@ -54,6 +247,7 @@ export function TrialDetailScreen() {
       <View
         style={[
           styles.topBar,
+          { backgroundColor: brand.header },
           Platform.OS === 'ios'
             ? { paddingTop: 58 }
             : { paddingTop: (RNStatusBar.currentHeight ?? 0) + 8 },
@@ -70,25 +264,30 @@ export function TrialDetailScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {trial.hero ? (
-          <Image source={trial.hero} style={styles.hero} />
-        ) : (
-          <View style={styles.hero} />
-        )}
+        <View style={[styles.hero, { backgroundColor: brand.headerAlt }]} />
 
         <View style={styles.sheet}>
           <View style={styles.titleRow}>
-            {trial.crest ? (
-              <Image source={trial.crest} style={styles.crest} />
+            {representativePhotoUrl ? (
+              <Image
+                source={{ uri: representativePhotoUrl }}
+                style={styles.crest}
+              />
             ) : (
               <View style={styles.crest} />
             )}
             <View style={styles.titleCopy}>
-              <Text style={styles.trialName}>{trial.name}</Text>
-              <Text style={styles.clubName}>{trial.club}</Text>
+              <Text style={styles.trialName}>{oportunidad.titulo}</Text>
+              <Pressable
+                onPress={() => openProfile(oportunidad.fk_representante)}
+              >
+                <Text style={styles.clubName}>{representativeName}</Text>
+              </Pressable>
               <View style={styles.locationRow}>
                 <FontAwesome5 name="map-marker-alt" size={11} color="#8A8A8A" />
-                <Text style={styles.locationText}>{trial.location}</Text>
+                <Text style={styles.locationText}>
+                  {oportunidad.ubicacion || 'A confirmar'}
+                </Text>
               </View>
             </View>
           </View>
@@ -100,85 +299,179 @@ export function TrialDetailScreen() {
                 size={14}
                 color={brand.header}
               />
-              <Text style={styles.infoText}>{trial.date}</Text>
+              <Text style={styles.infoText}>
+                {formatFechaEvento(oportunidad.fecha_evento)}
+              </Text>
             </View>
             <View style={styles.infoItem}>
               <FontAwesome5
-                name="user-friends"
+                name="clipboard"
                 size={14}
                 color={brand.header}
               />
-              <Text style={styles.infoText}>{trial.ageRange}</Text>
+              <Text style={styles.infoText}>
+                {formatOportunidadTipo(oportunidad.tipo) || 'Prueba'}
+              </Text>
             </View>
           </View>
 
           <View style={styles.infoItem}>
-            <FontAwesome5 name="clipboard" size={14} color={brand.header} />
-            <Text style={styles.infoText}>{trial.evaluationType}</Text>
+            <FontAwesome5 name="info-circle" size={14} color={brand.header} />
+            <Text style={styles.infoText}>
+              {formatOportunidadEstado(oportunidad.estado)}
+              {publishedLabel ? ` · Publicada el ${publishedLabel}` : ''}
+            </Text>
           </View>
 
           <Text style={styles.sectionTitle}>Sobre la prueba</Text>
-          <Text style={styles.description}>{trial.description}</Text>
+          <Text style={styles.description}>
+            {oportunidad.descripcion || 'Sin descripción.'}
+          </Text>
 
-          {isAgent ? (
+          <Text style={styles.sectionTitle}>Requisitos</Text>
+          <Text style={styles.description}>
+            {oportunidad.requisitos || 'Sin requisitos.'}
+          </Text>
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          {isOwner ? (
             <View>
               <View
                 style={[
                   styles.appliedButton,
                   {
-                    backgroundColor: trial.status === 'finished' ? '#9BB8AE' : brand.header,
+                    backgroundColor:
+                      formatOportunidadEstado(oportunidad.estado) === 'Finalizada'
+                        ? '#9BB8AE'
+                        : brand.header,
                   },
                 ]}
               >
                 <Text style={styles.appliedButtonText}>
-                  {trial.status === 'finished' ? 'Prueba finalizada' : 'Prueba activa'}
+                  {formatOportunidadEstado(oportunidad.estado) === 'Finalizada'
+                    ? 'Prueba finalizada'
+                    : 'Prueba activa'}
                 </Text>
               </View>
               <Text style={styles.sectionTitle}>Postulantes</Text>
-              <Text style={styles.description}>
-                {trial.applicants ?? 0} jugadores se postularon a esta prueba.
-              </Text>
-              {(trial.applicantIds ?? []).map((userId) => {
-                const applicant = getProfile(userId);
-                if (!applicant) {
-                  return null;
-                }
-                return (
-                  <Pressable
-                    key={userId}
-                    style={styles.applicantRow}
-                    onPress={() =>
-                      navigation.push('Profile', { userId: applicant.id })
-                    }
-                  >
-                    <Image source={applicant.photo} style={styles.applicantPhoto} />
-                    <View style={styles.applicantCopy}>
-                      <Text style={styles.applicantName}>{applicant.name}</Text>
-                      <Text style={styles.applicantMeta}>{applicant.location}</Text>
+              {applicants.length === 0 ? (
+                <Text style={styles.description}>
+                  Todavía no hay postulantes.
+                </Text>
+              ) : (
+                applicants.map((item) => {
+                  const playerId = item.postulacion.fk_jugador;
+                  const name = item.profile?.name || 'Jugador';
+                  const isPending = item.postulacion.estado === 'pendiente';
+                  const busy =
+                    respondingId === item.postulacion.id_postulacion;
+                  const meta = [
+                    item.profile?.location,
+                    item.profile?.fields?.[0]?.value,
+                    formatPostulacionEstado(item.postulacion.estado),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+                  return (
+                    <View
+                      key={String(item.postulacion.id_postulacion || playerId)}
+                      style={styles.applicantRow}
+                    >
+                      <Pressable
+                        style={styles.applicantMain}
+                        onPress={() => openProfile(playerId)}
+                      >
+                        {item.profile?.photoUrl ? (
+                          <Image
+                            source={{ uri: item.profile.photoUrl }}
+                            style={styles.applicantPhoto}
+                          />
+                        ) : (
+                          <View style={styles.applicantPhoto} />
+                        )}
+                        <View style={styles.applicantCopy}>
+                          <Text style={styles.applicantName}>{name}</Text>
+                          <Text style={styles.applicantMeta}>{meta}</Text>
+                        </View>
+                      </Pressable>
+                      {isPending ? (
+                        <View style={styles.applicantActions}>
+                          <Pressable
+                            style={[
+                              styles.acceptButton,
+                              busy ? { opacity: 0.6 } : null,
+                            ]}
+                            onPress={() => {
+                              void handleRespond(
+                                item.postulacion.id_postulacion,
+                                'aceptada',
+                              );
+                            }}
+                          >
+                            <FontAwesome5 name="check" size={14} color="#FFFFFF" />
+                          </Pressable>
+                          <Pressable
+                            style={[
+                              styles.rejectButton,
+                              busy ? { opacity: 0.6 } : null,
+                            ]}
+                            onPress={() => {
+                              void handleRespond(
+                                item.postulacion.id_postulacion,
+                                'rechazada',
+                              );
+                            }}
+                          >
+                            <FontAwesome5 name="times" size={14} color="#FFFFFF" />
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <View
+                          style={[
+                            styles.statusChip,
+                            item.postulacion.estado === 'aceptada'
+                              ? styles.statusAccepted
+                              : styles.statusRejected,
+                          ]}
+                        >
+                          <Text style={styles.statusChipText}>
+                            {formatPostulacionEstado(item.postulacion.estado)}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                    <FontAwesome5 name="chevron-right" size={12} color="#B0B0B0" />
-                  </Pressable>
-                );
-              })}
+                  );
+                })
+              )}
             </View>
-          ) : applied ? (
-            <View style={styles.appliedBlock}>
-              <View style={styles.appliedButton}>
-                <FontAwesome5 name="check" size={14} color="#FFFFFF" />
-                <Text style={styles.appliedButtonText}>Postulación enviada</Text>
+          ) : !isAgent ? (
+            applied ? (
+              <View style={styles.appliedBlock}>
+                <View style={styles.appliedButton}>
+                  <FontAwesome5 name="check" size={14} color="#FFFFFF" />
+                  <Text style={styles.appliedButtonText}>Ya estás postulado</Text>
+                </View>
+                <Text style={styles.reviewText}>
+                  {applyNotice || 'Tu postulación está en revisión.'}
+                </Text>
               </View>
-              <Text style={styles.reviewText}>
-                Tu postulación está en revisión.
-              </Text>
-            </View>
-          ) : (
-            <Pressable
-              style={[styles.applyButton, { backgroundColor: brand.header }]}
-              onPress={() => applyToTrial(trial.id)}
-            >
-              <Text style={styles.applyButtonText}>Postularse</Text>
-            </Pressable>
-          )}
+            ) : (
+              <Pressable
+                style={[
+                  styles.applyButton,
+                  { backgroundColor: brand.header, opacity: applying ? 0.7 : 1 },
+                ]}
+                onPress={() => {
+                  void handleApply();
+                }}
+              >
+                <Text style={styles.applyButtonText}>
+                  {applying ? 'Enviando...' : 'Postularme'}
+                </Text>
+              </Pressable>
+            )
+          ) : null}
         </View>
       </ScrollView>
 
@@ -289,6 +582,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
+  errorText: {
+    marginTop: 12,
+    color: '#B42318',
+    fontSize: 13,
+  },
   applyButton: {
     marginTop: 22,
     height: 52,
@@ -333,6 +631,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   missingText: {
+    marginTop: 12,
     marginBottom: 12,
     color: colors.text,
     fontSize: 16,
@@ -348,6 +647,49 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 8,
     gap: 12,
+  },
+  applicantMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  applicantActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  acceptButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2E8B57',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rejectButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E53935',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  statusAccepted: {
+    backgroundColor: '#D7F4E3',
+  },
+  statusRejected: {
+    backgroundColor: '#F8D7DA',
+  },
+  statusChipText: {
+    color: '#111111',
+    fontSize: 11,
+    fontWeight: '700',
   },
   applicantPhoto: {
     width: 44,

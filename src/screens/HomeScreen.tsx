@@ -2,7 +2,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -22,10 +22,8 @@ import { PremiumBadge } from '../components/PremiumBadge';
 import { useConexiones } from '../context/ConexionesContext';
 import {
   fetchAuthenticatedUserIdentity,
-  fetchAuthenticatedUserPremium,
   usePlayerProfile,
 } from '../context/PlayerProfileContext';
-import { usePlayerTrials } from '../context/PlayerTrialsContext';
 import { OWN_PROFILE_ID } from '../data/playerProfiles';
 import {
   DirectoryPerson,
@@ -33,6 +31,11 @@ import {
   fetchDirectoryPlayers,
 } from '../lib/directory';
 import { fetchUnreadRepresentationNotificationCount } from '../lib/notificaciones';
+import {
+  fetchMisOportunidades,
+  formatFechaEvento,
+  Oportunidad,
+} from '../lib/oportunidades';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -83,7 +86,6 @@ export function HomeScreen() {
     incomingCount,
     refresh: refreshConexiones,
   } = useConexiones();
-  const { publishedTrials } = usePlayerTrials();
   const brand = useBrandColors();
   const isAgent = role === 'agent';
   const [fetchedFirstName, setFetchedFirstName] = useState('');
@@ -92,10 +94,15 @@ export function HomeScreen() {
   const [players, setPlayers] = useState<DirectoryPerson[]>([]);
   const [agents, setAgents] = useState<DirectoryPerson[]>([]);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  const [upcomingTrials, setUpcomingTrials] = useState<Oportunidad[]>([]);
   const firstName = fetchedFirstName || firstNameFrom(currentProfile.name);
-  const upcomingTrials = publishedTrials;
   const previewPlayers = players.slice(0, 8);
   const previewAgents = agents.slice(0, 8);
+  const appliedIdentityRef = useRef<{
+    name: string;
+    email: string;
+    photoUrl?: string;
+  } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,31 +110,42 @@ export function HomeScreen() {
 
       async function loadIdentity() {
         const { identity, error } = await fetchAuthenticatedUserIdentity();
-        if (cancelled) {
-          return;
-        }
-        if (error || !identity) {
+        if (cancelled || error || !identity) {
           return;
         }
 
         const nextFirstName =
           identity.firstName || firstNameFrom(identity.name);
-        if (nextFirstName) {
-          setFetchedFirstName(nextFirstName);
+        setFetchedFirstName((current) =>
+          nextFirstName && current !== nextFirstName ? nextFirstName : current,
+        );
+        setPhotoUrl((current) =>
+          current === identity.photoUrl ? current : identity.photoUrl,
+        );
+        setIsPremium((current) =>
+          current === identity.isPremium ? current : identity.isPremium,
+        );
+
+        const applied = appliedIdentityRef.current;
+        if (
+          applied &&
+          applied.name === identity.name &&
+          applied.email === identity.email &&
+          applied.photoUrl === identity.photoUrl
+        ) {
+          return;
         }
-        setPhotoUrl(identity.photoUrl);
+
+        appliedIdentityRef.current = {
+          name: identity.name,
+          email: identity.email,
+          photoUrl: identity.photoUrl,
+        };
         updateProfile({
-          name: identity.name || currentProfile.name,
+          name: identity.name,
           email: identity.email,
           photoUrl: identity.photoUrl,
         });
-      }
-
-      async function loadPremium() {
-        const { isPremium: nextIsPremium } = await fetchAuthenticatedUserPremium();
-        if (!cancelled) {
-          setIsPremium(nextIsPremium);
-        }
       }
 
       async function loadDirectory() {
@@ -146,19 +164,35 @@ export function HomeScreen() {
         if (cancelled) {
           return;
         }
-        setUnreadNotificationsCount(result.ok ? result.data : 0);
+        setUnreadNotificationsCount((current) =>
+          result.ok && current !== result.data ? result.data : current,
+        );
+      }
+
+      async function loadUpcomingTrials() {
+        if (role !== 'agent') {
+          if (!cancelled) {
+            setUpcomingTrials([]);
+          }
+          return;
+        }
+        const result = await fetchMisOportunidades();
+        if (cancelled || !result.ok) {
+          return;
+        }
+        setUpcomingTrials(result.data);
       }
 
       void loadIdentity();
-      void loadPremium();
       void loadDirectory();
       void refreshConexiones();
       void loadUnreadNotifications();
+      void loadUpcomingTrials();
 
       return () => {
         cancelled = true;
       };
-    }, [refreshConexiones]),
+    }, [refreshConexiones, role]),
   );
 
   function requestConnection(userId: string) {
@@ -417,21 +451,20 @@ export function HomeScreen() {
               ) : (
                 upcomingTrials.slice(0, 3).map((trial) => (
                 <Pressable
-                  key={trial.id}
+                  key={String(trial.id_oportunidad)}
                   style={styles.homeTrialCard}
                   onPress={() =>
-                    navigation.navigate('TrialDetail', { trialId: trial.id })
+                    navigation.navigate('TrialDetail', {
+                      trialId: String(trial.id_oportunidad),
+                    })
                   }
                 >
-                  {trial.crest ? (
-                    <Image source={trial.crest} style={styles.homeTrialCrest} />
-                  ) : (
-                    <View style={styles.homeTrialCrest} />
-                  )}
+                  <View style={styles.homeTrialCrest} />
                   <View style={styles.homeTrialBody}>
-                    <Text style={styles.homeTrialTitle}>{trial.name}</Text>
+                    <Text style={styles.homeTrialTitle}>{trial.titulo}</Text>
                     <Text style={styles.homeTrialMeta}>
-                      {trial.location} · {trial.date}
+                      {trial.ubicacion || 'A confirmar'} ·{' '}
+                      {formatFechaEvento(trial.fecha_evento)}
                     </Text>
                   </View>
                   <FontAwesome5 name="chevron-right" size={12} color="#B0B0B0" />
