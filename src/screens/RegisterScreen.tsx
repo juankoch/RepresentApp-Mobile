@@ -159,7 +159,7 @@ export function RegisterScreen() {
               <Text style={styles.label}>NOMBRE</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Juan Gonzales"
+                placeholder="Juan"
                 placeholderTextColor={colors.inputText}
                 autoCapitalize="words"
                 autoCorrect={false}

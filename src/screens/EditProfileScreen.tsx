@@ -22,6 +22,7 @@ import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { OWN_PROFILE_ID } from '../data/playerProfiles';
 import { findOrCreateClubId } from '../lib/clubes';
+import { findOrCreatePosicionId } from '../lib/posiciones';
 import {
   photoExtension,
   uploadAuthenticatedUserPhoto,
@@ -107,30 +108,6 @@ function splitFullName(fullName: string, fallbackLastName: string) {
     return { nombre: parts[0], apellido: fallbackLastName };
   }
   return { nombre: parts[0], apellido: parts.slice(1).join(' ') };
-}
-
-async function findIdByName(
-  table: 'posiciones' | 'clubes',
-  idField: 'id_posicion' | 'id_club',
-  nombre: string,
-) {
-  const { data, error } = await supabase
-    .from(table)
-    .select(idField)
-    .ilike('nombre', nombre)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
-    return null;
-  }
-
-  const id = (data as Record<string, string | number>)[idField];
-  return id ?? null;
 }
 
 export function EditProfileScreen() {
@@ -460,21 +437,9 @@ export function EditProfileScreen() {
         }
       } else {
         const trimmedPosition = positionRef.current.trim();
-        let positionId: string | number | null = null;
-        if (trimmedPosition) {
-          positionId = await findIdByName(
-            'posiciones',
-            'id_posicion',
-            trimmedPosition,
-          );
-          if (positionId == null) {
-            Alert.alert(
-              'No se pudo guardar',
-              'La posición no es válida. Escribí una posición existente.',
-            );
-            return;
-          }
-        }
+        const positionId = trimmedPosition
+          ? await findOrCreatePosicionId(trimmedPosition)
+          : null;
 
         const trimmedClub = clubRef.current.trim();
         const clubId = trimmedClub ? await findOrCreateClubId(trimmedClub) : null;

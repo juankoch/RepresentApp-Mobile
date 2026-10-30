@@ -19,12 +19,18 @@ import {
 } from 'react-native';
 
 import { RaLogo } from '../components/RaLogo';
+import { SocialAuthModal } from '../components/SocialAuthModal';
 import { usePlayerMessages } from '../context/PlayerMessagesContext';
 import {
   fetchCreatedProfileKind,
   usePlayerProfile,
 } from '../context/PlayerProfileContext';
 import { usePlayerTrials } from '../context/PlayerTrialsContext';
+import {
+  completeSocialAuthFromUrl,
+  getSocialAuthUrl,
+  SocialProvider,
+} from '../lib/socialAuth';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -39,21 +45,13 @@ export function LoginScreen() {
   const { resetSession: resetMessages } = usePlayerMessages();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [socialAuthUrl, setSocialAuthUrl] = useState<string | null>(null);
   const logoSize = Math.min(92, Math.max(72, windowWidth * 0.22));
   const panelRadius = Math.min(86, windowWidth * 0.22);
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
 
-  async function handleLogin() {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-
-    if (error) {
-      Alert.alert("Error", "El email o la contraseña son incorrectos.");
-      return;
-    }
-
+  async function finishAuthenticatedLogin() {
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) {
       Alert.alert(
@@ -113,6 +111,70 @@ export function LoginScreen() {
     );
     navigation.navigate('Home');
   }
+
+  async function handleLogin() {
+    if (busy) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        Alert.alert('Error', 'El email o la contraseña son incorrectos.');
+        return;
+      }
+
+      await finishAuthenticatedLogin();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSocialLogin(provider: SocialProvider) {
+    if (busy) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const url = await getSocialAuthUrl(provider);
+      setSocialAuthUrl(url);
+    } catch (error) {
+      setBusy(false);
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'No se pudo iniciar sesión con esa red social.';
+      Alert.alert('Error al iniciar sesión', message);
+    }
+  }
+
+  function closeSocialAuth() {
+    setSocialAuthUrl(null);
+    setBusy(false);
+  }
+
+  async function handleSocialCallback(url: string) {
+    setSocialAuthUrl(null);
+    try {
+      await completeSocialAuthFromUrl(url);
+      await finishAuthenticatedLogin();
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : 'No se pudo iniciar sesión con esa red social.';
+      Alert.alert('Error al iniciar sesión', message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
 
   return (
     <View style={styles.root}>
@@ -186,7 +248,8 @@ export function LoginScreen() {
             </View>
 
             <Pressable
-              style={styles.button}
+              style={[styles.button, busy && styles.buttonDisabled]}
+              disabled={busy}
               onPress={() => {
                 void handleLogin();
               }}
@@ -205,27 +268,25 @@ export function LoginScreen() {
 
             <View style={styles.socialRow}>
               <Pressable
-                style={[styles.socialCircle, styles.instagramCircle]}
-                onPress={() => navigation.navigate('CreateProfile')}
-              >
-                <FontAwesome5 name="instagram" size={20} color="#FFFFFF" brand />
-              </Pressable>
-              <Pressable
                 style={[styles.socialCircle, styles.googleCircle]}
-                onPress={() => navigation.navigate('CreateProfile')}
+                disabled={busy}
+                onPress={() => {
+                  void handleSocialLogin('google');
+                }}
               >
                 <FontAwesome5 name="google" size={18} color="#DB4437" brand />
-              </Pressable>
-              <Pressable
-                style={[styles.socialCircle, styles.facebookCircle]}
-                onPress={() => navigation.navigate('CreateProfile')}
-              >
-                <FontAwesome5 name="facebook" size={20} color="#FFFFFF" brand />
               </Pressable>
             </View>
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
+      <SocialAuthModal
+        url={socialAuthUrl}
+        onClose={closeSocialAuth}
+        onCallback={(url) => {
+          void handleSocialCallback(url);
+        }}
+      />
     </View>
   );
 }
@@ -298,6 +359,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.button,
     borderRadius: 27,
   },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
   buttonText: {
     color: colors.buttonText,
     fontSize: 16,
@@ -334,15 +398,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  instagramCircle: {
-    backgroundColor: '#E1306C',
-  },
   googleCircle: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E6E6E6',
-  },
-  facebookCircle: {
-    backgroundColor: '#1877F2',
   },
 });

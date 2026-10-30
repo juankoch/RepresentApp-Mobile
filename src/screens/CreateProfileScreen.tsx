@@ -2,7 +2,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -20,6 +20,8 @@ import {
 
 import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { findOrCreateClubId } from '../lib/clubes';
+import { ageYearsFromBirthDate } from '../lib/perfil';
+import { findOrCreatePosicionId } from '../lib/posiciones';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -55,8 +57,8 @@ function birthDateFromMetadata(value: unknown): string | null {
 }
 
 async function findIdByName(
-  table: 'roles' | 'posiciones',
-  idField: 'id_rol' | 'id_posicion',
+  table: 'roles',
+  idField: 'id_rol',
   nombre: string,
 ) {
   const { data, error } = await supabase
@@ -84,12 +86,66 @@ export function CreateProfileScreen() {
   const { startSession } = usePlayerProfile();
   const [role, setRole] = useState<ProfileRole>(null);
   const [name, setName] = useState('');
-  const [age, setAge] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [position, setPosition] = useState('');
   const [club, setClub] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
+  const ageYears = ageYearsFromBirthDate(birthDate);
+  const ageLabel = ageYears == null ? '—' : `${ageYears} años`;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRegisteredIdentity() {
+      const { data, error } = await supabase.auth.getUser();
+      if (cancelled || error || !data.user) {
+        return;
+      }
+
+      const metadata = data.user.user_metadata ?? {};
+      const firstName =
+        metadataString(metadata.first_name) ||
+        metadataString(metadata.given_name) ||
+        metadataString(metadata.name).split(/\s+/)[0] ||
+        metadataString(metadata.full_name).split(/\s+/)[0];
+      const fromMetadata = birthDateFromMetadata(metadata.birth_date);
+
+      if (firstName) {
+        setName((current) => current || firstName);
+      }
+      if (fromMetadata) {
+        setBirthDate(fromMetadata);
+        return;
+      }
+
+      const { data: usuario } = await supabase
+        .from('usuarios')
+        .select('fecha_nacimiento, nombre')
+        .eq('id_usuario', data.user.id)
+        .maybeSingle();
+
+      if (cancelled || !usuario) {
+        return;
+      }
+
+      const row = usuario as { fecha_nacimiento?: unknown; nombre?: unknown };
+      const storedName = metadataString(row.nombre);
+      const storedBirth = birthDateFromMetadata(row.fecha_nacimiento);
+      if (storedName) {
+        setName((current) => current || storedName);
+      }
+      if (storedBirth) {
+        setBirthDate(storedBirth);
+      }
+    }
+
+    void loadRegisteredIdentity();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function createProfile() {
     if (!role) {
@@ -126,11 +182,7 @@ export function CreateProfileScreen() {
 
       if (role === 'player') {
         if (position.trim()) {
-          positionId = await findIdByName(
-            'posiciones',
-            'id_posicion',
-            position.trim(),
-          );
+          positionId = await findOrCreatePosicionId(position.trim());
         }
         if (club.trim()) {
           clubId = await findOrCreateClubId(club.trim());
@@ -219,11 +271,7 @@ export function CreateProfileScreen() {
           {
             icon: 'calendar-alt',
             label: 'Edad',
-            value: age.trim()
-              ? age.trim().includes('año')
-                ? age.trim()
-                : `${age.trim()} años`
-              : '',
+            value: ageYears == null ? '' : String(ageYears),
           },
           { icon: 'arrows-alt-v', label: 'Altura', value: '' },
           { icon: 'walking', label: 'Pierna hábil', value: '' },
@@ -281,7 +329,7 @@ export function CreateProfileScreen() {
               <Text style={styles.label}>NOMBRE</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Juan Gonzales"
+                placeholder="Juan"
                 placeholderTextColor={colors.inputText}
                 autoCapitalize="words"
                 autoCorrect={false}
@@ -294,11 +342,10 @@ export function CreateProfileScreen() {
               <Text style={styles.label}>EDAD</Text>
               <TextInput
                 style={styles.input}
-                placeholder="17"
+                placeholder="Según fecha de nacimiento"
                 placeholderTextColor={colors.inputText}
-                keyboardType="number-pad"
-                value={age}
-                onChangeText={setAge}
+                value={ageYears == null ? '' : ageLabel}
+                editable={false}
               />
             </View>
 
