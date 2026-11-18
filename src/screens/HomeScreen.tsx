@@ -311,7 +311,19 @@ export function HomeScreen() {
           </View>
 
           <View style={styles.quickRow}>
-            {quickAccess.map((item) => {
+            {(isAgent
+              ? [
+                  quickAccess[0],
+                  {
+                    icon: 'briefcase' as const,
+                    title: 'CRM',
+                    subtitle: 'Tus representados',
+                  },
+                  quickAccess[1],
+                  quickAccess[2],
+                ]
+              : quickAccess
+            ).map((item) => {
               const inner = (
                 <>
                   <View style={styles.quickIconWrap}>
@@ -370,6 +382,18 @@ export function HomeScreen() {
                     key={item.title}
                     style={styles.quickItem}
                     onPress={() => navigation.push('Connections')}
+                  >
+                    {inner}
+                  </Pressable>
+                );
+              }
+
+              if (item.title === 'CRM') {
+                return (
+                  <Pressable
+                    key={item.title}
+                    style={styles.quickItem}
+                    onPress={() => navigation.push('Crm')}
                   >
                     {inner}
                   </Pressable>
@@ -554,7 +578,7 @@ export function HomeScreen() {
             <View style={[styles.bannerOverlay, isAgent && { backgroundColor: 'rgba(107, 79, 18, 0.72)' }]} />
             <View style={styles.bannerDecor} pointerEvents="none">
               <FontAwesome5
-                name="crown"
+                name={isAgent && isPremium ? 'briefcase' : 'crown'}
                 solid
                 size={58}
                 color={brand.accent}
@@ -564,25 +588,37 @@ export function HomeScreen() {
               <View style={styles.bannerCopy}>
                 <View style={styles.bannerKickerRow}>
                   <FontAwesome5
-                    name="crown"
+                    name={isAgent && isPremium ? 'briefcase' : 'crown'}
                     solid
                     size={11}
                     color={brand.accent}
                   />
-                  <Text style={[styles.bannerKicker, { color: brand.accent }]}>RepresentApp Premium</Text>
+                  <Text style={[styles.bannerKicker, { color: brand.accent }]}>
+                    {isAgent && isPremium
+                      ? 'CRM interno'
+                      : 'RepresentApp Premium'}
+                  </Text>
                 </View>
                 <Text style={styles.bannerTitle}>
-                  ¿Querés destacar tu perfil?
+                  {isAgent && isPremium
+                    ? 'Gestioná a tus representados'
+                    : '¿Querés destacar tu perfil?'}
                 </Text>
                 <Text style={styles.bannerSubtitle}>
-                  Accedé a beneficios exclusivos y aumentá tus oportunidades.
+                  {isAgent && isPremium
+                    ? 'Notas, estados y solicitudes de tu plantel en un solo lugar.'
+                    : 'Accedé a beneficios exclusivos y aumentá tus oportunidades.'}
                 </Text>
               </View>
               <Pressable
                 style={[styles.bannerButton, { backgroundColor: brand.accent }]}
-                onPress={() => navigation.push('Premium')}
+                onPress={() =>
+                  navigation.push(isAgent && isPremium ? 'Crm' : 'Premium')
+                }
               >
-                <Text style={[styles.bannerButtonText, { color: brand.header }]}>Conocé Premium  ›</Text>
+                <Text style={[styles.bannerButtonText, { color: brand.header }]}>
+                  {isAgent && isPremium ? 'Abrir CRM  ›' : 'Conocé Premium  ›'}
+                </Text>
               </Pressable>
             </View>
           </View>

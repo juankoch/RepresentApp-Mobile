@@ -30,7 +30,7 @@ const profileItems: {
   title: string;
   subtitle: string;
   accent?: boolean;
-  route: 'EditProfile' | 'Highlights' | 'Premium';
+  route: 'EditProfile' | 'Highlights' | 'Crm' | 'Premium';
 }[] = [
   {
     icon: 'user-edit',
@@ -43,6 +43,12 @@ const profileItems: {
     title: 'Mis highlights',
     subtitle: 'Mostrá tus mejores jugadas',
     route: 'Highlights',
+  },
+  {
+    icon: 'briefcase',
+    title: 'CRM interno',
+    subtitle: 'Gestioná a tus jugadores representados',
+    route: 'Crm',
   },
   {
     icon: 'crown',
@@ -124,7 +130,15 @@ export function SettingsScreen() {
         >
           <Text style={styles.sectionLabel}>Perfil</Text>
           {profileItems
-            .filter((item) => role === 'player' || item.route !== 'Highlights')
+            .filter((item) => {
+              if (item.route === 'Highlights') {
+                return role === 'player';
+              }
+              if (item.route === 'Crm') {
+                return role === 'agent';
+              }
+              return true;
+            })
             .map((item) => (
             <Pressable
               key={item.title}

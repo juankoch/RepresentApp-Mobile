@@ -12,6 +12,8 @@ import { ConnectionRequestsScreen } from '../screens/ConnectionRequestsScreen';
 import { ConnectionsListScreen } from '../screens/ConnectionsListScreen';
 import { ConnectionsScreen } from '../screens/ConnectionsScreen';
 import { CreateProfileScreen } from '../screens/CreateProfileScreen';
+import { CrmPlayerScreen } from '../screens/CrmPlayerScreen';
+import { CrmScreen } from '../screens/CrmScreen';
 import { DeleteAccountScreen } from '../screens/DeleteAccountScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
@@ -86,6 +88,8 @@ export function AuthNavigator() {
             <Stack.Screen name="BlockUser" component={BlockUserScreen} />
             <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
             <Stack.Screen name="Highlights" component={HighlightsScreen} />
+            <Stack.Screen name="Crm" component={CrmScreen} />
+            <Stack.Screen name="CrmPlayer" component={CrmPlayerScreen} />
           </Stack.Navigator>
         </MensajesUnreadProvider>
         </PlayerMessagesProvider>

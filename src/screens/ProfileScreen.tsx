@@ -561,9 +561,11 @@ export function ProfileScreen() {
               if (displayedProfile.kind !== 'agent') {
                 return;
               }
-              const representativeId = ownProfile
-                ? authenticatedUserId
-                : displayedProfile.id;
+              if (ownProfile) {
+                navigation.push('Crm');
+                return;
+              }
+              const representativeId = displayedProfile.id;
               if (!representativeId || representativeId === 'me') {
                 return;
               }
@@ -581,9 +583,11 @@ export function ProfileScreen() {
               if (field.label !== 'Representados' || displayedProfile.kind !== 'agent') {
                 return;
               }
-              const representativeId = ownProfile
-                ? authenticatedUserId
-                : displayedProfile.id;
+              if (ownProfile) {
+                navigation.push('Crm');
+                return;
+              }
+              const representativeId = displayedProfile.id;
               if (!representativeId || representativeId === 'me') {
                 return;
               }
@@ -636,7 +640,15 @@ export function ProfileScreen() {
                         Mis highlights
                       </Text>
                     </Pressable>
-                  ) : null}
+                  ) : (
+                    <Pressable
+                      style={styles.highlightsButton}
+                      onPress={() => navigation.push('Crm')}
+                    >
+                      <FontAwesome5 name="briefcase" size={13} color="#FFFFFF" />
+                      <Text style={styles.highlightsButtonText}>Mi CRM</Text>
+                    </Pressable>
+                  )}
                 </View>
               ) : blocked ? (
                 <View style={styles.blockedCard}>
