@@ -2,14 +2,13 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { ComponentProps, useState } from 'react';
+import { ComponentProps } from 'react';
 import {
   Platform,
   Pressable,
   ScrollView,
   StatusBar as RNStatusBar,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from 'react-native';
@@ -59,28 +58,10 @@ const profileItems: {
   },
 ];
 
-const generalItems: {
-  icon: IconName;
-  title: string;
-  subtitle: string;
-}[] = [
-  {
-    icon: 'lock',
-    title: 'Cambiar contraseña',
-    subtitle: 'Actualizá tu contraseña',
-  },
-  {
-    icon: 'globe',
-    title: 'Idioma',
-    subtitle: 'Español',
-  },
-];
-
 export function SettingsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
-  const [darkMode, setDarkMode] = useState(false);
   const { resetSession, role } = usePlayerProfile();
   const { resetSession: resetTrials } = usePlayerTrials();
   const { resetSession: resetMessages } = usePlayerMessages();
@@ -170,38 +151,19 @@ export function SettingsScreen() {
           ))}
 
           <Text style={styles.sectionLabel}>General</Text>
-          <View style={styles.row}>
+          <Pressable
+            style={styles.row}
+            onPress={() => navigation.push('ChangePassword')}
+          >
             <View style={styles.iconWrap}>
-              <FontAwesome5 name="moon" solid size={14} color={colors.homeHeader} />
+              <FontAwesome5 name="lock" solid size={14} color={colors.homeHeader} />
             </View>
             <View style={styles.rowBody}>
-              <Text style={styles.rowTitle}>Modo oscuro</Text>
-              <Text style={styles.rowSubtitle}>Apariencia de la app</Text>
+              <Text style={styles.rowTitle}>Cambiar contraseña</Text>
+              <Text style={styles.rowSubtitle}>Actualizá tu contraseña</Text>
             </View>
-            <Switch
-              value={darkMode}
-              onValueChange={setDarkMode}
-              trackColor={{ false: '#E8E8E8', true: colors.homeAccent }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-          {generalItems.map((item) => (
-            <View key={item.title} style={styles.row}>
-              <View style={styles.iconWrap}>
-                <FontAwesome5
-                  name={item.icon}
-                  solid
-                  size={14}
-                  color={colors.homeHeader}
-                />
-              </View>
-              <View style={styles.rowBody}>
-                <Text style={styles.rowTitle}>{item.title}</Text>
-                <Text style={styles.rowSubtitle}>{item.subtitle}</Text>
-              </View>
-              <FontAwesome5 name="chevron-right" size={12} color="#B0B0B0" />
-            </View>
-          ))}
+            <FontAwesome5 name="chevron-right" size={12} color="#B0B0B0" />
+          </Pressable>
 
           <Pressable
             style={styles.logoutRow}

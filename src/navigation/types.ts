@@ -2,6 +2,7 @@ export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
+  ResetPassword: undefined;
   CreateProfile: undefined;
   Home: undefined;
   Trials: { initialTab?: 'all' | 'pending' | 'publish' | 'mine' } | undefined;
@@ -24,6 +25,7 @@ export type AuthStackParamList = {
   ReportUser: { userId: string };
   BlockUser: { userId: string };
   DeleteAccount: undefined;
+  ChangePassword: undefined;
   Highlights: undefined;
   HighlightPlayer: { url: string; title?: string };
   Crm: undefined;

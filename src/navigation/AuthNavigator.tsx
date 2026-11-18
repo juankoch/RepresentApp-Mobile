@@ -7,6 +7,7 @@ import { PlayerProfileProvider } from '../context/PlayerProfileContext';
 import { PlayerTrialsProvider } from '../context/PlayerTrialsContext';
 import { RepresentacionesProvider } from '../context/RepresentacionesContext';
 import { BlockUserScreen } from '../screens/BlockUserScreen';
+import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { ConnectionRequestsScreen } from '../screens/ConnectionRequestsScreen';
 import { ConnectionsListScreen } from '../screens/ConnectionsListScreen';
@@ -29,6 +30,7 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { RateUserScreen } from '../screens/RateUserScreen';
 import { RepresentedPlayersScreen } from '../screens/RepresentedPlayersScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
+import { ResetPasswordScreen } from '../screens/ResetPasswordScreen';
 import { ReportUserScreen } from '../screens/ReportUserScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -56,6 +58,10 @@ export function AuthNavigator() {
             <Stack.Screen
               name="ForgotPassword"
               component={ForgotPasswordScreen}
+            />
+            <Stack.Screen
+              name="ResetPassword"
+              component={ResetPasswordScreen}
             />
             <Stack.Screen name="CreateProfile" component={CreateProfileScreen} />
             <Stack.Screen name="Home" component={HomeScreen} />
@@ -88,6 +94,10 @@ export function AuthNavigator() {
             <Stack.Screen name="ReportUser" component={ReportUserScreen} />
             <Stack.Screen name="BlockUser" component={BlockUserScreen} />
             <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
+            <Stack.Screen
+              name="ChangePassword"
+              component={ChangePasswordScreen}
+            />
             <Stack.Screen name="Highlights" component={HighlightsScreen} />
             <Stack.Screen
               name="HighlightPlayer"

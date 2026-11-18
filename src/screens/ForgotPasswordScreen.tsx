@@ -18,6 +18,10 @@ import {
   View,
 } from 'react-native';
 
+import {
+  AUTH_RESET_REDIRECT,
+  emailSendErrorMessage,
+} from '../lib/authLinks';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -28,30 +32,118 @@ export function ForgotPasswordScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
   const panelRadius = Math.min(86, windowWidth * 0.22);
   const horizontalPadding = Math.max(28, windowWidth * 0.085);
 
   async function sendLink() {
+    if (sending) {
+      return;
+    }
+
     const trimmedEmail = email.trim();
 
     if (!trimmedEmail) {
       Alert.alert('Email requerido', 'Ingresá tu email para recuperar la contraseña.');
       return;
     }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
-
-    if (error) {
-      Alert.alert('Error de recuperación', error.message);
+    if (!trimmedEmail.includes('@')) {
+      Alert.alert('Email inválido', 'Revisá el email e intentá de nuevo.');
       return;
     }
 
-    Alert.alert(
-      'Revisá tu email',
-      'Te enviamos un correo para restablecer tu contraseña.',
-    );
-    setSent(true);
+    setSending(true);
+    try {
+      let { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo: AUTH_RESET_REDIRECT,
+      });
+
+      if (error) {
+        console.log('[auth] reset with redirect failed', {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+        });
+        const retry = await supabase.auth.resetPasswordForEmail(trimmedEmail);
+        error = retry.error;
+      }
+
+      if (error) {
+        console.log('[auth] resetPasswordForEmail', {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+        });
+        Alert.alert('Error de recuperación', emailSendErrorMessage(error));
+        return;
+      }
+
+      setSent(true);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function saveWithCode() {
+    if (saving) {
+      return;
+    }
+
+    const token = code.trim();
+    const next = password.trim();
+    const confirm = confirmPassword.trim();
+    if (!token || !next || !confirm) {
+      Alert.alert('Datos incompletos', 'Completá el código y las dos contraseñas.');
+      return;
+    }
+    if (next.length < 6) {
+      Alert.alert(
+        'Contraseña corta',
+        'La nueva contraseña tiene que tener al menos 6 caracteres.',
+      );
+      return;
+    }
+    if (next !== confirm) {
+      Alert.alert(
+        'No coinciden',
+        'La nueva contraseña y la confirmación no son iguales.',
+      );
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error: otpError } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token,
+        type: 'recovery',
+      });
+      if (otpError) {
+        Alert.alert(
+          'Código inválido',
+          'Revisá el código del mail. Si expiró, pedí uno nuevo.',
+        );
+        return;
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: next });
+      if (error) {
+        Alert.alert('No se pudo guardar', error.message);
+        return;
+      }
+
+      await supabase.auth.signOut();
+      Alert.alert('Listo', 'Ya podés iniciar sesión con la nueva contraseña.', [
+        { text: 'OK', onPress: () => navigation.navigate('Login') },
+      ]);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -110,21 +202,66 @@ export function ForgotPasswordScreen() {
           >
             {sent ? (
               <>
-                <View style={styles.iconCircle}>
-                  <FontAwesome5 name="envelope" size={22} color={colors.button} />
-                </View>
                 <View style={styles.titleBlock}>
-                  <Text style={styles.title}>¡Listo!</Text>
+                  <Text style={styles.title}>Código del mail</Text>
                   <Text style={styles.copy}>
-                    Te enviamos un enlace a {email.trim()} para que puedas
-                    restablecer tu contraseña.
+                    Te mandamos un código a {email.trim()}. No toques el
+                    enlace: copiá el código y cargalo acá.
                   </Text>
                 </View>
+
+                <View style={styles.field}>
+                  <Text style={styles.label}>CÓDIGO</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="123456"
+                    placeholderTextColor={colors.inputText}
+                    keyboardType="number-pad"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={code}
+                    onChangeText={setCode}
+                  />
+                </View>
+
+                <View style={styles.field}>
+                  <Text style={styles.label}>NUEVA CONTRASEÑA</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="•••••••"
+                    placeholderTextColor={colors.inputText}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={password}
+                    onChangeText={setPassword}
+                  />
+                </View>
+
+                <View style={styles.field}>
+                  <Text style={styles.label}>CONFIRMAR CONTRASEÑA</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="•••••••"
+                    placeholderTextColor={colors.inputText}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                  />
+                </View>
+
                 <Pressable
-                  style={styles.button}
-                  onPress={() => navigation.navigate('Login')}
+                  style={[styles.button, saving && styles.buttonDisabled]}
+                  disabled={saving}
+                  onPress={() => {
+                    void saveWithCode();
+                  }}
                 >
-                  <Text style={styles.buttonText}>Volver al login</Text>
+                  <Text style={styles.buttonText}>
+                    {saving ? 'Guardando...' : 'Guardar contraseña'}
+                  </Text>
                 </Pressable>
               </>
             ) : (
@@ -132,8 +269,8 @@ export function ForgotPasswordScreen() {
                 <View style={styles.titleBlock}>
                   <Text style={styles.title}>Recuperar contraseña</Text>
                   <Text style={styles.copy}>
-                    Ingresá el email con el que te registraste y te enviaremos un
-                    enlace para restablecer tu contraseña.
+                    Ingresá el email con el que te registraste y te mandamos un
+                    código para elegir una contraseña nueva.
                   </Text>
                 </View>
 
@@ -152,12 +289,15 @@ export function ForgotPasswordScreen() {
                 </View>
 
                 <Pressable
-                  style={styles.button}
+                  style={[styles.button, sending && styles.buttonDisabled]}
+                  disabled={sending}
                   onPress={() => {
                     void sendLink();
                   }}
                 >
-                  <Text style={styles.buttonText}>Enviar enlace</Text>
+                  <Text style={styles.buttonText}>
+                    {sending ? 'Enviando...' : 'Enviar código'}
+                  </Text>
                 </Pressable>
               </>
             )}
@@ -260,6 +400,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.button,
     borderRadius: 27,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   buttonText: {
     color: colors.buttonText,

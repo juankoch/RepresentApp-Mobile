@@ -21,6 +21,10 @@ import {
   View,
 } from 'react-native';
 
+import {
+  AUTH_CONFIRM_REDIRECT,
+  emailSendErrorMessage,
+} from '../lib/authLinks';
 import { supabase } from '../lib/supabase';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -74,6 +78,7 @@ export function RegisterScreen() {
       email: email.trim(),
       password,
       options: {
+        emailRedirectTo: AUTH_CONFIRM_REDIRECT,
         data: {
           first_name: firstName,
           last_name: lastNameValue,
@@ -84,14 +89,14 @@ export function RegisterScreen() {
     });
 
     if (error) {
-      Alert.alert('Error al registrarse', error.message);
+      Alert.alert('Error al registrarse', emailSendErrorMessage(error));
       return;
     }
 
     if (!data.session) {
       Alert.alert(
         'Confirmá tu email',
-        'Te enviamos un correo para confirmar tu cuenta. Después de confirmarlo, iniciá sesión.',
+        'Te enviamos un correo para confirmar tu cuenta. Abrilo en este teléfono, tocá el enlace y después iniciá sesión.',
         [
           {
             text: 'OK',
