@@ -24,6 +24,7 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
+import { useRepresentaciones } from '../context/RepresentacionesContext';
 import {
   CRM_TAGS,
   CrmPlayer,
@@ -48,6 +49,7 @@ export function CrmPlayerScreen() {
   const route = useRoute<RouteProp<AuthStackParamList, 'CrmPlayer'>>();
   const brand = useBrandColors();
   const { isPremium, role } = usePlayerProfile();
+  const { end: endRepresentation } = useRepresentaciones();
   const playerId = route.params.playerId.trim();
   const [player, setPlayer] = useState<CrmPlayer | null>(null);
   const [note, setNote] = useState('');
@@ -303,6 +305,38 @@ export function CrmPlayerScreen() {
                   <Text style={styles.darkButtonText}>Ver perfil</Text>
                 </Pressable>
               </View>
+              <Pressable
+                style={styles.endButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Cortar representación',
+                    'Vas a dejar de representar a este jugador. ¿Confirmás?',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Cortar',
+                        style: 'destructive',
+                        onPress: () => {
+                          void endRepresentation(player.representationId).then(
+                            (result) => {
+                              if (!result.ok) {
+                                Alert.alert(
+                                  'No se pudo cortar la representación',
+                                  result.message,
+                                );
+                                return;
+                              }
+                              navigation.goBack();
+                            },
+                          );
+                        },
+                      },
+                    ],
+                  );
+                }}
+              >
+                <Text style={styles.endButtonText}>Cortar representación</Text>
+              </Pressable>
             </>
           )}
         </ScrollView>
@@ -509,6 +543,17 @@ const styles = StyleSheet.create({
   },
   darkButtonText: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  endButton: {
+    height: 48,
+    marginTop: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endButtonText: {
+    color: '#E53935',
     fontSize: 15,
     fontWeight: '700',
   },

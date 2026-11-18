@@ -483,6 +483,60 @@ export function rejectRepresentationRequest(idRepresentacion: number) {
   return responderSolicitud(idRepresentacion, 'rechazada');
 }
 
+export async function endRepresentation(
+  idRepresentacion: number,
+): Promise<RepresentacionMutationResult> {
+  const myId = await getAuthenticatedUserId();
+  if (!myId || !isRealUserId(myId)) {
+    return { ok: false, message: 'No hay un usuario autenticado.' };
+  }
+
+  const { row, error: fetchError } = await fetchRepresentacionRow(idRepresentacion);
+  if (fetchError) {
+    return { ok: false, message: fetchError.message };
+  }
+  if (!row) {
+    return { ok: false, message: 'No encontramos esa representación.' };
+  }
+  if (row.estado !== 'aceptada') {
+    return { ok: false, message: 'Solo se puede cortar una representación aceptada.' };
+  }
+  if (row.fk_jugador !== myId && row.fk_representante !== myId) {
+    return { ok: false, message: 'No tenés acceso a esta representación.' };
+  }
+
+  const { data, error } = await supabase
+    .from('representaciones')
+    .update({
+      estado: 'rechazada',
+      fecha_respuesta: new Date().toISOString(),
+    })
+    .eq('id_representacion', idRepresentacion)
+    .eq('estado', 'aceptada')
+    .or(`fk_jugador.eq.${myId},fk_representante.eq.${myId}`)
+    .select('id_representacion');
+
+  if (error) {
+    return {
+      ok: false,
+      message: mutationErrorMessage(
+        error,
+        'No se pudo cortar la representación. Revisá las policies UPDATE de public.representaciones.',
+      ),
+    };
+  }
+
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      message:
+        'No se pudo cortar la representación. Falta una policy UPDATE para filas aceptadas en public.representaciones.',
+    };
+  }
+
+  return { ok: true };
+}
+
 export async function fetchMisRepresentaciones(): Promise<
   RepresentacionResult<Representacion[]>
 > {

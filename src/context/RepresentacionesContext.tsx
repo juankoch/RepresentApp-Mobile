@@ -9,6 +9,7 @@ import {
 
 import {
   acceptRepresentationRequest,
+  endRepresentation,
   fetchIncomingRepresentationRequests,
   fetchMisRepresentaciones,
   getActiveRepresentationForPlayer as fetchActiveRepresentationForPlayer,
@@ -35,6 +36,7 @@ type RepresentacionesContextValue = {
   sendRequest: (otherUserId: string) => Promise<RepresentacionMutationResult>;
   accept: (idRepresentacion: number) => Promise<RepresentacionMutationResult>;
   reject: (idRepresentacion: number) => Promise<RepresentacionMutationResult>;
+  end: (idRepresentacion: number) => Promise<RepresentacionMutationResult>;
   isRepresentedBy: (userId: string, representativeId: string) => Promise<boolean>;
   isRepresenting: (representativeId: string, playerId: string) => Promise<boolean>;
   getActiveRepresentationForPlayer: (
@@ -95,7 +97,6 @@ export function RepresentacionesProvider({ children }: { children: ReactNode }) 
       if (!incoming.ok) {
         setRepresentaciones(mine.data);
         setIncomingRequests([]);
-        setError(incoming.message);
         return;
       }
 
@@ -157,6 +158,11 @@ export function RepresentacionesProvider({ children }: { children: ReactNode }) 
       },
       reject: async (idRepresentacion) => {
         const result = await rejectRepresentationRequest(idRepresentacion);
+        await refresh();
+        return result;
+      },
+      end: async (idRepresentacion) => {
+        const result = await endRepresentation(idRepresentacion);
         await refresh();
         return result;
       },

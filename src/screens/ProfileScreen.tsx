@@ -27,6 +27,7 @@ import { usePlayerProfile } from '../context/PlayerProfileContext';
 import { useRepresentaciones } from '../context/RepresentacionesContext';
 import { OWN_PROFILE_ID, ProfileField, UserProfile } from '../data/playerProfiles';
 import { getOrCreateConversation } from '../lib/mensajes';
+import { fetchHighlights, HighlightVideo } from '../lib/highlights';
 import {
   fetchProfileByUserId,
   profileToUserProfile,
@@ -133,6 +134,12 @@ function overlayOwnStats(base: UserProfile, session: UserProfile) {
   ];
 }
 
+function sameUserId(left?: string | null, right?: string | null) {
+  const a = left?.trim().toLowerCase();
+  const b = right?.trim().toLowerCase();
+  return Boolean(a && b && a !== 'me' && a === b);
+}
+
 function goBackFromProfile(
   navigation: NativeStackNavigationProp<AuthStackParamList>,
 ) {
@@ -234,6 +241,7 @@ export function ProfileScreen() {
     representaciones,
     sendRequest: sendRepresentationRequest,
     accept: acceptRepresentation,
+    end: endRepresentation,
     refresh: refreshRepresentaciones,
     activeRepresentation,
     error: representacionesError,
@@ -252,6 +260,7 @@ export function ProfileScreen() {
   const [actionsLoaded, setActionsLoaded] = useState(false);
   const [otherLoadError, setOtherLoadError] = useState<string | null>(null);
   const [otherRetryNonce, setOtherRetryNonce] = useState(0);
+  const [highlights, setHighlights] = useState<HighlightVideo[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -377,6 +386,35 @@ export function ProfileScreen() {
     ]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      async function loadHighlights() {
+        const { data } = await supabase.auth.getUser();
+        const targetId = ownProfile
+          ? data.user?.id?.trim() || ''
+          : userId.trim();
+        if (!targetId || targetId === 'me') {
+          if (!cancelled) {
+            setHighlights([]);
+          }
+          return;
+        }
+
+        const result = await fetchHighlights(targetId);
+        if (!cancelled) {
+          setHighlights(result.ok ? result.data : []);
+        }
+      }
+
+      void loadHighlights();
+      return () => {
+        cancelled = true;
+      };
+    }, [ownProfile, userId]),
+  );
+
   const displayedProfile = ownProfile ? ownProfileData : otherProfile;
   const requested = displayedProfile ? hasSentRequest(displayedProfile.id) : false;
   const connected = displayedProfile ? isConnected(displayedProfile.id) : false;
@@ -384,22 +422,33 @@ export function ProfileScreen() {
   const blocked = displayedProfile ? isBlocked(displayedProfile.id) : false;
   const rating = displayedProfile ? getRating(displayedProfile.id) : undefined;
   const otherProfileKind = displayedProfile?.kind;
-  const canShowRepresentation =
-    !ownProfile &&
-    actionsLoaded &&
-    !representacionesError &&
-    !blocked &&
-    connected &&
-    Boolean(displayedProfile) &&
-    (otherProfileKind === 'player' || otherProfileKind === 'agent') &&
-    role !== otherProfileKind;
   const pairRepresentation = displayedProfile
     ? representaciones.find(
         (row) =>
-          row.fk_jugador === displayedProfile.id ||
-          row.fk_representante === displayedProfile.id,
+          row.estado === 'aceptada' &&
+          (sameUserId(row.fk_jugador, displayedProfile.id) ||
+            sameUserId(row.fk_representante, displayedProfile.id)),
+      ) ??
+      representaciones.find(
+        (row) =>
+          row.estado === 'pendiente' &&
+          (sameUserId(row.fk_jugador, displayedProfile.id) ||
+            sameUserId(row.fk_representante, displayedProfile.id)),
       )
     : undefined;
+  const acceptedPair =
+    pairRepresentation?.estado === 'aceptada' ? pairRepresentation : undefined;
+  const canEndRepresentation = !ownProfile && !blocked && Boolean(acceptedPair);
+  const canShowRepresentation =
+    canEndRepresentation ||
+    (!ownProfile &&
+      actionsLoaded &&
+      !representacionesError &&
+      !blocked &&
+      connected &&
+      Boolean(displayedProfile) &&
+      (otherProfileKind === 'player' || otherProfileKind === 'agent') &&
+      role !== otherProfileKind);
   const playerHasActiveRepresentation =
     role === 'player' &&
     (Boolean(
@@ -410,6 +459,41 @@ export function ProfileScreen() {
       representaciones.some(
         (row) => row.estado === 'pendiente' || row.estado === 'aceptada',
       ));
+
+  function confirmEndRepresentation(idRepresentacion: number) {
+    Alert.alert(
+      'Cortar representación',
+      role === 'player'
+        ? 'Este representante va a dejar de representarte. ¿Confirmás?'
+        : 'Vas a dejar de representar a este jugador. ¿Confirmás?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cortar',
+          style: 'destructive',
+          onPress: () => {
+            void endRepresentation(idRepresentacion).then((result) => {
+              if (!result.ok) {
+                Alert.alert(
+                  'No se pudo cortar la representación',
+                  result.message,
+                );
+                return;
+              }
+              void refreshRepresentaciones();
+              if (ownProfile && authenticatedUserId) {
+                void fetchProfileByUserId(authenticatedUserId).then((loaded) => {
+                  if (loaded) {
+                    setOwnProfileData(profileToUserProfile(loaded));
+                  }
+                });
+              }
+            });
+          },
+        },
+      ],
+    );
+  }
 
   async function openChatWith(otherUserId: string) {
     try {
@@ -611,6 +695,40 @@ export function ProfileScreen() {
                 />
               ) : null
             }
+            extra={
+              displayedProfile.kind === 'player' && highlights.length > 0 ? (
+                <View style={styles.highlightsSection}>
+                  <Text style={styles.highlightsTitle}>Highlights</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.highlightsRow}
+                  >
+                    {highlights.map((video) => (
+                      <Pressable
+                        key={video.id}
+                        style={styles.highlightCard}
+                        onPress={() =>
+                          navigation.push('HighlightPlayer', {
+                            url: video.url,
+                            title: video.title,
+                          })
+                        }
+                      >
+                        <View style={styles.highlightThumb}>
+                          <View style={styles.highlightPlay}>
+                            <FontAwesome5 name="play" size={11} color="#FFFFFF" />
+                          </View>
+                        </View>
+                        <Text style={styles.highlightName} numberOfLines={1}>
+                          {video.title}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null
+            }
             footer={
               ownProfile ? (
                 <View>
@@ -649,6 +767,20 @@ export function ProfileScreen() {
                       <Text style={styles.highlightsButtonText}>Mi CRM</Text>
                     </Pressable>
                   )}
+                  {role === 'player' && activeRepresentation ? (
+                    <Pressable
+                      style={styles.endRepresentationButton}
+                      onPress={() =>
+                        confirmEndRepresentation(
+                          activeRepresentation.id_representacion,
+                        )
+                      }
+                    >
+                      <Text style={styles.endRepresentationText}>
+                        Cortar representación
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : blocked ? (
                 <View style={styles.blockedCard}>
@@ -746,16 +878,34 @@ export function ProfileScreen() {
                   ) : null}
                 {canShowRepresentation ? (
                   <View style={styles.representationRow}>
-                    {pairRepresentation?.estado === 'aceptada' ? (
-                      <View
-                        style={[styles.requestButton, styles.connectedButton]}
-                      >
-                        <FontAwesome5 name="check" size={14} color="#FFFFFF" />
-                        <Text style={styles.requestButtonText}>
-                          {role === 'player'
-                            ? 'Tu representante'
-                            : 'Lo representás'}
-                        </Text>
+                    {acceptedPair ? (
+                      <View style={styles.endRepresentationWrap}>
+                        <View
+                          style={[
+                            styles.requestButton,
+                            styles.connectedButton,
+                            styles.endRepresentationStatus,
+                          ]}
+                        >
+                          <FontAwesome5 name="check" size={14} color="#FFFFFF" />
+                          <Text style={styles.requestButtonText}>
+                            {role === 'player'
+                              ? 'Tu representante'
+                              : 'Lo representás'}
+                          </Text>
+                        </View>
+                        <Pressable
+                          style={styles.endRepresentationButton}
+                          onPress={() =>
+                            confirmEndRepresentation(
+                              acceptedPair.id_representacion,
+                            )
+                          }
+                        >
+                          <Text style={styles.endRepresentationText}>
+                            Cortar representación
+                          </Text>
+                        </Pressable>
                       </View>
                     ) : pairRepresentation?.estado === 'pendiente' &&
                       authenticatedUserId &&
@@ -945,6 +1095,43 @@ const styles = StyleSheet.create({
     backgroundColor: colors.homeHeader,
     gap: 8,
   },
+  highlightsSection: {
+    marginTop: 18,
+  },
+  highlightsTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  highlightsRow: {
+    gap: 10,
+  },
+  highlightCard: {
+    width: 120,
+  },
+  highlightThumb: {
+    width: 120,
+    height: 80,
+    borderRadius: 16,
+    backgroundColor: colors.homeHeader,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  highlightPlay: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(7, 54, 44, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  highlightName: {
+    marginTop: 6,
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   highlightsButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
@@ -1003,10 +1190,27 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   representationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginTop: 10,
+  },
+  endRepresentationWrap: {
     gap: 10,
+  },
+  endRepresentationStatus: {
+    flex: 0,
+  },
+  endRepresentationButton: {
+    height: 44,
+    marginTop: 10,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E53935',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endRepresentationText: {
+    color: '#E53935',
+    fontSize: 14,
+    fontWeight: '700',
   },
   actionsAfterRating: {
     marginTop: 10,
