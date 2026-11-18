@@ -13,6 +13,7 @@ type ProfileContentProps = {
   footer?: ReactNode;
   onStatPress?: (stat: ProfileStat) => void;
   onFieldPress?: (field: { label: string; value: string }) => void;
+  extra?: ReactNode;
 };
 
 export function ProfileContent({
@@ -22,6 +23,7 @@ export function ProfileContent({
   footer,
   onStatPress,
   onFieldPress,
+  extra,
 }: ProfileContentProps) {
   const brand = useBrandColors();
   return (
@@ -141,6 +143,7 @@ export function ProfileContent({
         <Text style={styles.aboutText}>{profile.about}</Text>
       </View>
 
+      {extra}
       {footer}
     </View>
   );

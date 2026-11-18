@@ -25,6 +25,7 @@ export type AuthStackParamList = {
   BlockUser: { userId: string };
   DeleteAccount: undefined;
   Highlights: undefined;
+  HighlightPlayer: { url: string; title?: string };
   Crm: undefined;
   CrmPlayer: { playerId: string };
 };

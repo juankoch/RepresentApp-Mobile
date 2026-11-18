@@ -27,12 +27,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "RepresentApp necesita acceder a tus fotos para actualizar tu foto de perfil.",
+          "photosPermission": "RepresentApp necesita acceder a tus fotos y videos para el perfil y los highlights.",
           "cameraPermission": false,
           "microphonePermission": false
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-status-bar",
+      "expo-font",
+      "expo-video"
     ]
   }
 }

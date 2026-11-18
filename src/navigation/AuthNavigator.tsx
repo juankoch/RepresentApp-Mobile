@@ -17,6 +17,7 @@ import { CrmScreen } from '../screens/CrmScreen';
 import { DeleteAccountScreen } from '../screens/DeleteAccountScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
+import { HighlightPlayerScreen } from '../screens/HighlightPlayerScreen';
 import { HighlightsScreen } from '../screens/HighlightsScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -88,6 +89,10 @@ export function AuthNavigator() {
             <Stack.Screen name="BlockUser" component={BlockUserScreen} />
             <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
             <Stack.Screen name="Highlights" component={HighlightsScreen} />
+            <Stack.Screen
+              name="HighlightPlayer"
+              component={HighlightPlayerScreen}
+            />
             <Stack.Screen name="Crm" component={CrmScreen} />
             <Stack.Screen name="CrmPlayer" component={CrmPlayerScreen} />
           </Stack.Navigator>

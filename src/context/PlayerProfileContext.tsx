@@ -1,10 +1,6 @@
 import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
 
 import {
-  highlightCatalog,
-  PlayerHighlight,
-} from '../data/playerHighlights';
-import {
   createEmptySessionProfile,
   getUserProfileById,
   isOwnProfileId,
@@ -43,8 +39,6 @@ type PlayerProfileContextValue = {
   blockUser: (userId: string) => void;
   unblockUser: (userId: string) => void;
   isBlocked: (userId: string) => boolean;
-  highlights: PlayerHighlight[];
-  addHighlight: () => void;
   resetSession: () => void;
 };
 
@@ -254,7 +248,6 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
   const [ratings, setRatings] = useState<Record<string, UserRating>>({});
   const [reportedIds, setReportedIds] = useState<string[]>([]);
   const [blockedIds, setBlockedIds] = useState<string[]>([]);
-  const [highlights, setHighlights] = useState<PlayerHighlight[]>([]);
 
   function applyRole(
     nextRole: UserRole,
@@ -282,7 +275,6 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
     setRatings({});
     setReportedIds([]);
     setBlockedIds([]);
-    setHighlights([]);
   }
 
   const value = useMemo<PlayerProfileContextValue>(
@@ -352,21 +344,11 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
         setBlockedIds((current) => current.filter((id) => id !== userId));
       },
       isBlocked: (userId) => blockedIds.includes(userId),
-      highlights,
-      addHighlight: () => {
-        setHighlights((current) => {
-          const next = highlightCatalog.find(
-            (item) => !current.some((highlight) => highlight.id === item.id),
-          );
-          return next ? [...current, next] : current;
-        });
-      },
       resetSession: () => applyRole('player'),
     }),
     [
       blockedIds,
       currentProfile,
-      highlights,
       isPremium,
       ratings,
       reportedIds,
