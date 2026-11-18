@@ -16,6 +16,7 @@ import {
 
 import { PlayerTabBar } from '../components/PlayerTabBar';
 import { usePlayerProfile } from '../context/PlayerProfileContext';
+import { payPremiumWithMercadoPago } from '../lib/mercadoPago';
 import { AuthStackParamList } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useBrandColors } from '../theme/useBrandColors';
@@ -67,8 +68,9 @@ export function PremiumScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const brand = useBrandColors();
-  const { isPremium, activatePremium, role } = usePlayerProfile();
+  const { isPremium, activatePremium, cancelPremium, role } = usePlayerProfile();
   const [activating, setActivating] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const isAgent = role === 'agent';
   const benefits = isAgent
     ? [agentExclusiveBenefit, ...sharedBenefits]
@@ -80,6 +82,25 @@ export function PremiumScreen() {
     }
     setActivating(true);
     try {
+      const checkout = await payPremiumWithMercadoPago();
+      if (checkout.status === 'cancelled') {
+        return;
+      }
+      if (checkout.status === 'pending') {
+        Alert.alert(
+          'Pago pendiente',
+          'Mercado Pago todavía está procesando el pago. Cuando se acredite, volvé a intentar.',
+        );
+        return;
+      }
+      if (checkout.status !== 'approved') {
+        Alert.alert(
+          'Pago no aprobado',
+          'Mercado Pago no acreditó el pago. Probá de nuevo o usá otra tarjeta.',
+        );
+        return;
+      }
+
       const result = await activatePremium();
       if (!result.ok) {
         Alert.alert('No se pudo activar Premium', result.message);
@@ -93,6 +114,43 @@ export function PremiumScreen() {
     } finally {
       setActivating(false);
     }
+  }
+
+  function handleCancelPremium() {
+    if (cancelling) {
+      return;
+    }
+
+    Alert.alert(
+      'Darse de baja',
+      'Vas a perder los beneficios Premium. ¿Confirmás?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Darme de baja',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setCancelling(true);
+              try {
+                const result = await cancelPremium();
+                if (!result.ok) {
+                  Alert.alert('No se pudo dar de baja', result.message);
+                }
+              } catch (error) {
+                const message =
+                  error instanceof Error
+                    ? error.message
+                    : 'No se pudo dar de baja. Intentá de nuevo.';
+                Alert.alert('No se pudo dar de baja', message);
+              } finally {
+                setCancelling(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
   }
 
   return (
@@ -148,8 +206,8 @@ export function PremiumScreen() {
 
           <View style={styles.planCard}>
             <Text style={styles.planLabel}>Plan mensual</Text>
-            <Text style={styles.planPrice}>$ 4.999</Text>
-            <Text style={styles.planNote}>Precio mock · 12 meses gratis de ejemplo</Text>
+            <Text style={styles.planPrice}>$ 5</Text>
+            <Text style={styles.planNote}>Pago único del mes · Mercado Pago</Text>
           </View>
 
           {isPremium ? (
@@ -158,7 +216,15 @@ export function PremiumScreen() {
                 <FontAwesome5 name="check" size={14} color={colors.homeHeader} />
                 <Text style={styles.ctaDoneText}>Premium activado</Text>
               </View>
-              {isAgent ? null : (
+              {isAgent ? (
+                <Pressable
+                  style={styles.secondaryCta}
+                  onPress={() => navigation.push('Crm')}
+                >
+                  <FontAwesome5 name="briefcase" size={14} color="#FFFFFF" />
+                  <Text style={styles.ctaText}>Abrir CRM</Text>
+                </Pressable>
+              ) : (
                 <Pressable
                   style={styles.secondaryCta}
                   onPress={() => navigation.push('Highlights')}
@@ -167,15 +233,31 @@ export function PremiumScreen() {
                   <Text style={styles.ctaText}>Ver mis highlights</Text>
                 </Pressable>
               )}
+              <Pressable
+                style={[styles.cancelCta, cancelling && { opacity: 0.6 }]}
+                disabled={cancelling}
+                onPress={handleCancelPremium}
+              >
+                <Text style={styles.cancelCtaText}>
+                  {cancelling ? 'Dando de baja...' : 'Darse de baja'}
+                </Text>
+              </Pressable>
             </>
           ) : (
             <Pressable
-              style={[styles.cta, { backgroundColor: brand.header }]}
+              style={[
+                styles.cta,
+                { backgroundColor: brand.header },
+                activating && { opacity: 0.6 },
+              ]}
+              disabled={activating}
               onPress={() => {
                 void handleActivatePremium();
               }}
             >
-              <Text style={styles.ctaText}>Activar Premium</Text>
+              <Text style={styles.ctaText}>
+                {activating ? 'Abriendo Mercado Pago...' : 'Pagar con Mercado Pago'}
+              </Text>
             </Pressable>
           )}
         </ScrollView>
@@ -313,6 +395,21 @@ const styles = StyleSheet.create({
   },
   ctaDoneText: {
     color: colors.homeHeader,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  cancelCta: {
+    height: 52,
+    marginTop: 10,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D0D0D0',
+    backgroundColor: '#FFFFFF',
+  },
+  cancelCtaText: {
+    color: '#8A8A8A',
     fontSize: 16,
     fontWeight: '700',
   },

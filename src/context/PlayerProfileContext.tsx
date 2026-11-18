@@ -32,6 +32,7 @@ type PlayerProfileContextValue = {
   updateProfile: (updates: Partial<UserProfile>) => void;
   isPremium: boolean;
   activatePremium: () => Promise<{ ok: true } | { ok: false; message: string }>;
+  cancelPremium: () => Promise<{ ok: true } | { ok: false; message: string }>;
   ratings: Record<string, UserRating>;
   rateUser: (userId: string, stars: number, comment: string) => void;
   getRating: (userId: string) => UserRating | undefined;
@@ -124,7 +125,7 @@ export async function fetchAuthenticatedUserPremium() {
   };
 }
 
-export async function persistAuthenticatedUserPremium() {
+export async function persistAuthenticatedUserPremium(nextPremium = true) {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) {
     return {
@@ -139,14 +140,9 @@ export async function persistAuthenticatedUserPremium() {
 
   const { data: updatedRows, error: updateError, count } = await supabase
     .from('usuarios')
-    .update({ es_premium: true }, { count: 'exact' })
+    .update({ es_premium: nextPremium }, { count: 'exact' })
     .eq('id_usuario', userId)
     .select('id_usuario, es_premium');
-
-  console.log('[PREMIUM DEBUG] userId:', userId);
-  console.log('[PREMIUM DEBUG] updateError:', updateError);
-  console.log('[PREMIUM DEBUG] count:', count);
-  console.log('[PREMIUM DEBUG] updatedRows:', updatedRows);
 
   if (updateError) {
     return { ok: false as const, message: updateError.message };
@@ -164,10 +160,10 @@ export async function persistAuthenticatedUserPremium() {
     };
   }
 
-  if (!isPremiumFlag(updatedRow.es_premium)) {
+  if (isPremiumFlag(updatedRow.es_premium) !== nextPremium) {
     return {
       ok: false as const,
-      message: 'El UPDATE no devolvió es_premium = true.',
+      message: `El UPDATE no devolvió es_premium = ${nextPremium}.`,
     };
   }
 
@@ -177,20 +173,16 @@ export async function persistAuthenticatedUserPremium() {
     .eq('id_usuario', userId)
     .maybeSingle();
 
-  console.log('[PREMIUM DEBUG] userId:', userId);
-  console.log('[PREMIUM DEBUG] confirmError:', confirmError);
-  console.log('[PREMIUM DEBUG] confirmData:', confirmed);
-
   if (confirmError) {
     return { ok: false as const, message: confirmError.message };
   }
 
   const confirmedRow = confirmed as { es_premium?: unknown } | null;
-  if (!isPremiumFlag(confirmedRow?.es_premium)) {
+  if (isPremiumFlag(confirmedRow?.es_premium) !== nextPremium) {
     return {
       ok: false as const,
       message:
-        'Supabase no confirmó es_premium = true al volver a leer public.usuarios.',
+        `Supabase no confirmó es_premium = ${nextPremium} al volver a leer public.usuarios.`,
     };
   }
 
@@ -311,11 +303,19 @@ export function PlayerProfileProvider({ children }: { children: ReactNode }) {
       },
       isPremium,
       activatePremium: async () => {
-        const result = await persistAuthenticatedUserPremium();
+        const result = await persistAuthenticatedUserPremium(true);
         if (!result.ok) {
           return result;
         }
         setIsPremium(true);
+        return result;
+      },
+      cancelPremium: async () => {
+        const result = await persistAuthenticatedUserPremium(false);
+        if (!result.ok) {
+          return result;
+        }
+        setIsPremium(false);
         return result;
       },
       ratings,
