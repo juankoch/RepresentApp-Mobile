@@ -41,3 +41,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# editor / agent tooling
+.claude/
+.cursor/
+AGENTS.md
+CLAUDE.md
